@@ -273,7 +273,7 @@ def analyze_inputs(
 
     build_sku_workbook(analysis['sku_rows']).save(workspace / 'exports' / 'sku_metrics.xlsx')
     build_region_workbook(analysis['region_rows']).save(workspace / 'exports' / 'region_metrics.xlsx')
-    build_monthly_workbook(analysis['monthly_rows']).save(workspace / 'exports' / 'monthly_metrics.xlsx')
+    build_monthly_workbook(analysis['monthly_rows'], analysis['monthly_sku_rows']).save(workspace / 'exports' / 'monthly_metrics.xlsx')
     build_structured_workbook(analysis['structured_rows']).save(workspace / 'exports' / 'structured_orders.xlsx')
 
     payload = {

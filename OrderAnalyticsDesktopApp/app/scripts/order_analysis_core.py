@@ -579,6 +579,13 @@ def build_monthly_rows(monthly_stats: Dict[str, Dict[str, int]]) -> List[dict]:
     return rows
 
 
+def build_monthly_sku_rows(monthly_sku_stats: Dict[str, Dict[str, Dict[str, int]]]) -> Dict[str, List[dict]]:
+    return {
+        month: build_sku_rows(sku_stats)
+        for month, sku_stats in sorted(monthly_sku_stats.items(), key=lambda item: item[0])
+    }
+
+
 def _build_workbook(headers: List[str], data_rows: List[List], title: str) -> Workbook:
     workbook = Workbook()
     worksheet = workbook.active
@@ -654,7 +661,7 @@ def build_region_workbook(region_rows: List[dict]) -> Workbook:
     return _build_workbook(headers, data, "地区指标")
 
 
-def build_monthly_workbook(monthly_rows: List[dict]) -> Workbook:
+def build_monthly_workbook(monthly_rows: List[dict], monthly_sku_rows: Dict[str, List[dict]] | None = None) -> Workbook:
     headers = [
         "月份",
         "订单数",
@@ -680,7 +687,41 @@ def build_monthly_workbook(monthly_rows: List[dict]) -> Workbook:
         ]
         for row in monthly_rows
     ]
-    return _build_workbook(headers, data, "月度签收率")
+    workbook = _build_workbook(headers, data, "月度总览")
+    sku_headers = [
+        "Seller SKU",
+        "订单数",
+        "签收率(%)",
+        "已完成率(%)",
+        "已送达率(%)",
+        "退款率(%)",
+        "发货前取消率(%)",
+        "发货后取消率(%)",
+        "仍在途率(%)",
+    ]
+
+    for month, sku_rows in (monthly_sku_rows or {}).items():
+        worksheet = workbook.create_sheet(title=month[:31])
+        worksheet.append(sku_headers)
+        for row in sku_rows:
+            worksheet.append(
+                [
+                    row["seller_sku"],
+                    row["total"],
+                    row["sign_rate"],
+                    row["completed_rate"],
+                    row["delivered_rate"],
+                    row["refund_rate"],
+                    row["cancel_before_rate"],
+                    row["cancel_after_rate"],
+                    row["in_transit_rate"],
+                ]
+            )
+        for column_index in range(1, len(sku_headers) + 1):
+            column_letter = get_column_letter(column_index)
+            worksheet.column_dimensions[column_letter].width = 16
+
+    return workbook
 
 
 def build_structured_workbook(structured_rows: List[dict]) -> Workbook:
@@ -963,6 +1004,7 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
     file_processed: Counter = Counter()
     file_unknown: defaultdict[str, Counter] = defaultdict(Counter)
     monthly_stats: defaultdict[str, Dict[str, int]] = defaultdict(_empty_metrics)
+    monthly_sku_stats: defaultdict[str, defaultdict[str, Dict[str, int]]] = defaultdict(lambda: defaultdict(_empty_metrics))
     structured_rows = []
 
     for current_date, day_bucket in prepared.get("daily", {}).items():
@@ -973,6 +1015,7 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
         for seller_sku, metrics in day_bucket["sku_stats"].items():
             _merge_metrics(result["sku_stats"][seller_sku], metrics)
             _merge_metrics(monthly_stats[month_key], metrics)
+            _merge_metrics(monthly_sku_stats[month_key][seller_sku], metrics)
         for seller_sku, total in day_bucket["sku_totals"].items():
             result["sku_totals"][seller_sku] += total
         for seller_sku, region_map in day_bucket["region_stats"].items():
@@ -1013,6 +1056,7 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
     result["sku_rows"] = build_sku_rows(result["sku_stats"])
     result["region_rows"] = build_region_rows(result["region_stats"], result["sku_totals"])
     result["monthly_rows"] = build_monthly_rows(monthly_stats)
+    result["monthly_sku_rows"] = build_monthly_sku_rows(monthly_sku_stats)
     result["structured_rows"] = structured_rows
     result["summary"]["sku_count"] = len(result["sku_rows"])
     result["summary"]["region_count"] = len(result["region_rows"])
