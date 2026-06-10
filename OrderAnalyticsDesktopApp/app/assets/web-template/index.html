@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>订单分析工具</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+    <div class="page-shell">
+        <div class="ambient ambient-one"></div>
+        <div class="ambient ambient-two"></div>
+        <div class="page">
+            <header class="hero">
+                <div class="hero-copy-wrap">
+                    <h1 class="app-title">订单分析</h1>
+                    <p id="reportMeta" class="hero-copy">未选择文件</p>
+                </div>
+                <div class="hero-rail">
+                    <div class="hero-actions">
+                        <a id="skuDownload" class="button subtle disabled" href="./exports/sku_metrics.xlsx">SKU Excel</a>
+                        <a id="regionDownload" class="button subtle disabled" href="./exports/region_metrics.xlsx">Region Excel</a>
+                        <a id="monthlyDownload" class="button subtle disabled" href="./exports/monthly_metrics.xlsx">月度 Excel</a>
+                        <a id="structuredDownload" class="button subtle disabled" href="./exports/structured_orders.xlsx">结构化明细</a>
+                    </div>
+                </div>
+            </header>
+
+            <section class="command-deck">
+                <form id="uploadForm" class="upload-form">
+                    <div class="ingest-lane">
+                        <div class="field field-files">
+                            <div class="file-picker">
+                                <input id="fileInput" name="files" type="file" accept=".xlsx,.csv" multiple required>
+                                <div class="file-meta">
+                                    <strong id="fileSelectionText">点击选择或拖入文件</strong>
+                                    <span id="fileSelectionHint">支持 Excel / CSV，多选后自动识别日期范围</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <section id="datePanel" class="date-panel disabled">
+                        <p id="dateHint" class="sr-only">选择文件后自动识别日期范围。</p>
+
+                        <div id="datePresetGroup" class="preset-group">
+                            <button type="button" class="preset-chip active" data-date-mode="full_range">全范围</button>
+                            <button type="button" class="preset-chip" data-date-mode="today">今天</button>
+                            <button type="button" class="preset-chip" data-date-mode="last_7_days">近7天</button>
+                            <button type="button" class="preset-chip" data-date-mode="last_30_days">近30天</button>
+                            <button type="button" class="preset-chip" data-date-mode="current_month">本月</button>
+                            <button type="button" class="preset-chip" data-date-mode="custom">自定义</button>
+                        </div>
+
+                        <div class="date-summary-grid">
+                            <article class="date-summary-card">
+                                <span>文件全范围</span>
+                                <strong id="detectedRangeText">等待探测</strong>
+                            </article>
+                            <article class="date-summary-card">
+                                <span>当前选择</span>
+                                <strong id="selectedRangeText">未选择</strong>
+                            </article>
+                            <article class="date-summary-card">
+                                <span>当前模式</span>
+                                <strong id="selectedModeText">全范围</strong>
+                            </article>
+                        </div>
+
+                        <div class="field-row date-field-row">
+                            <div id="startDateField" class="field soft">
+                                <label for="startDateInput">开始日期</label>
+                                <input id="startDateInput" name="start_date" type="date">
+                            </div>
+                            <div id="endDateField" class="field soft">
+                                <label for="endDateInput">结束日期</label>
+                                <input id="endDateInput" name="end_date" type="date">
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="actions">
+                        <button id="submitButton" class="button primary" type="submit">分析当前日期范围</button>
+                    </div>
+                </form>
+                <div id="statusBox" class="status-box idle">等待上传文件</div>
+            </section>
+
+            <section class="summary-grid" id="summaryGrid"></section>
+
+            <section class="workspace-shell">
+                <div class="workspace-main">
+                    <section class="toolbar">
+                        <div class="toolbar-head">
+                            <p class="section-kicker">Workspace</p>
+                            <h2 id="tableTitle">SKU 汇总</h2>
+                        </div>
+                        <div class="toolbar-strip">
+                            <div class="tab-group">
+                                <button class="tab active" data-view="sku">SKU 汇总</button>
+                                <button class="tab" data-view="region">地区分析</button>
+                            </div>
+                            <div class="toolbar-controls">
+                                <input id="searchInput" type="search" placeholder="搜索 SKU / 地区">
+                                <select id="sortSelect">
+                                    <option value="total-desc">按订单数降序</option>
+                                    <option value="sign-desc">按签收率降序</option>
+                                    <option value="refund-desc">按退款率降序</option>
+                                    <option value="sku-asc">按 SKU 升序</option>
+                                </select>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="data-stage">
+                        <div class="panel-heading">
+                            <p class="muted">上传后可直接搜索、排序，并下载最新生成的 Excel。</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table id="dataTable"></table>
+                        </div>
+                    </section>
+                </div>
+
+                <aside class="diagnostics">
+                    <div class="diagnostic-block">
+                        <p class="section-kicker">Mapping</p>
+                        <h3>映射诊断</h3>
+                        <ul id="matchedColumns" class="meta-list"></ul>
+                    </div>
+                    <div class="diagnostic-block">
+                        <p class="section-kicker">Status</p>
+                        <h3>未知状态</h3>
+                        <ul id="unknownStatuses" class="meta-list"></ul>
+                    </div>
+                    <div class="diagnostic-block">
+                        <p class="section-kicker">Runtime</p>
+                        <h3>运行信息</h3>
+                        <ul id="runMeta" class="meta-list"></ul>
+                    </div>
+                </aside>
+            </section>
+        </div>
+    </div>
+
+    <script src="./generated/report-data.js"></script>
+    <script src="./app.js?v=20260610-excel-exports"></script>
+</body>
+</html>

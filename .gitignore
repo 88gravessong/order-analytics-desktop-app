@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local generated reports and runtime workspaces
+order-analysis-service/
+OrderAnalyticsDesktopApp/workspace/
+OrderAnalyticsDesktopApp/workspace-test/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
