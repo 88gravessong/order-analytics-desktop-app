@@ -531,7 +531,7 @@ def _metric_row(name: str, total: int, metrics: Dict[str, int]) -> dict:
     return {
         name: "",
         "total": total,
-        "sign_rate": round(completed_rate + delivered_rate + refund_rate, 2),
+        "sign_rate": round(completed_rate + delivered_rate, 2),
         "completed_rate": round(completed_rate, 2),
         "delivered_rate": round(delivered_rate, 2),
         "refund_rate": round(refund_rate, 2),
@@ -586,6 +586,26 @@ def build_monthly_sku_rows(monthly_sku_stats: Dict[str, Dict[str, Dict[str, int]
     }
 
 
+def build_daily_rows(daily_stats: Dict[str, Dict[str, int]], daily_sku_rows: Dict[str, List[dict]]) -> List[dict]:
+    rows = []
+    for day, metrics in sorted(daily_stats.items(), key=lambda item: item[0]):
+        total = metrics["total"]
+        if total == 0:
+            continue
+        row = _metric_row("date", total, metrics)
+        row["date"] = day
+        row["sku_count"] = len(daily_sku_rows.get(day, []))
+        rows.append(row)
+    return rows
+
+
+def build_daily_sku_rows(daily_sku_stats: Dict[str, Dict[str, Dict[str, int]]]) -> Dict[str, List[dict]]:
+    return {
+        day: build_sku_rows(sku_stats)
+        for day, sku_stats in sorted(daily_sku_stats.items(), key=lambda item: item[0])
+    }
+
+
 def _build_workbook(headers: List[str], data_rows: List[List], title: str) -> Workbook:
     workbook = Workbook()
     worksheet = workbook.active
@@ -596,6 +616,7 @@ def _build_workbook(headers: List[str], data_rows: List[List], title: str) -> Wo
     for column_index in range(1, len(headers) + 1):
         column_letter = get_column_letter(column_index)
         worksheet.column_dimensions[column_letter].width = 16
+    worksheet.freeze_panes = "A2"
     return workbook
 
 
@@ -720,6 +741,84 @@ def build_monthly_workbook(monthly_rows: List[dict], monthly_sku_rows: Dict[str,
         for column_index in range(1, len(sku_headers) + 1):
             column_letter = get_column_letter(column_index)
             worksheet.column_dimensions[column_letter].width = 16
+        worksheet.freeze_panes = "A2"
+
+    return workbook
+
+
+def build_daily_workbook(daily_rows: List[dict], daily_sku_rows: Dict[str, List[dict]]) -> Workbook:
+    overview_headers = [
+        "日期",
+        "订单数",
+        "SKU数",
+        "签收率(%)",
+        "已完成率(%)",
+        "已送达率(%)",
+        "退款率(%)",
+        "发货前取消率(%)",
+        "发货后取消率(%)",
+        "仍在途率(%)",
+    ]
+    overview_data = [
+        [
+            row["date"],
+            row["total"],
+            row["sku_count"],
+            row["sign_rate"],
+            row["completed_rate"],
+            row["delivered_rate"],
+            row["refund_rate"],
+            row["cancel_before_rate"],
+            row["cancel_after_rate"],
+            row["in_transit_rate"],
+        ]
+        for row in daily_rows
+    ]
+    workbook = _build_workbook(overview_headers, overview_data, "日度总览")
+
+    detail = workbook.create_sheet(title="日度SKU明细")
+    detail_headers = [
+        "日期",
+        "Seller SKU",
+        "订单数",
+        "签收率(%)",
+        "已完成率(%)",
+        "已送达率(%)",
+        "退款率(%)",
+        "发货前取消率(%)",
+        "发货后取消率(%)",
+        "仍在途率(%)",
+    ]
+    detail.append(detail_headers)
+    for day, sku_rows in daily_sku_rows.items():
+        for row in sku_rows:
+            detail.append(
+                [
+                    day,
+                    row["seller_sku"],
+                    row["total"],
+                    row["sign_rate"],
+                    row["completed_rate"],
+                    row["delivered_rate"],
+                    row["refund_rate"],
+                    row["cancel_before_rate"],
+                    row["cancel_after_rate"],
+                    row["in_transit_rate"],
+                ]
+            )
+    for column_index in range(1, len(detail_headers) + 1):
+        detail.column_dimensions[get_column_letter(column_index)].width = 16
+    detail.freeze_panes = "A2"
+
+    notes = workbook.create_sheet(title="口径说明")
+    notes.append(["字段", "说明"])
+    notes.append(["签收率(%)", "已完成率 + 已送达率"])
+    notes.append(["退款率(%)", "单独展示，不计入签收率"])
+    notes.append(["日期", "按 Created Time 的本地日期聚合"])
+    notes.append(["日度SKU明细", "每一天每个 Seller SKU 一行，用于透视表或折线趋势"])
+    for column_index in range(1, 3):
+        notes.column_dimensions[get_column_letter(column_index)].width = 32
+    notes.freeze_panes = "A2"
 
     return workbook
 
@@ -738,7 +837,7 @@ def build_structured_workbook(structured_rows: List[dict]) -> Workbook:
         "未知 Cancelation/Return Type",
     ]
     data = []
-    signed_buckets = {"completed", "delivered", "refund"}
+    signed_buckets = {"completed", "delivered"}
     for row in structured_rows:
         bucket = row.get("bucket", "")
         unknown_status = row.get("unknown_status") or {}
@@ -1005,6 +1104,8 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
     file_unknown: defaultdict[str, Counter] = defaultdict(Counter)
     monthly_stats: defaultdict[str, Dict[str, int]] = defaultdict(_empty_metrics)
     monthly_sku_stats: defaultdict[str, defaultdict[str, Dict[str, int]]] = defaultdict(lambda: defaultdict(_empty_metrics))
+    daily_stats: defaultdict[str, Dict[str, int]] = defaultdict(_empty_metrics)
+    daily_sku_stats: defaultdict[str, defaultdict[str, Dict[str, int]]] = defaultdict(lambda: defaultdict(_empty_metrics))
     structured_rows = []
 
     for current_date, day_bucket in prepared.get("daily", {}).items():
@@ -1012,10 +1113,13 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
             continue
 
         month_key = current_date.strftime("%Y-%m")
+        day_key = current_date.isoformat()
         for seller_sku, metrics in day_bucket["sku_stats"].items():
             _merge_metrics(result["sku_stats"][seller_sku], metrics)
             _merge_metrics(monthly_stats[month_key], metrics)
             _merge_metrics(monthly_sku_stats[month_key][seller_sku], metrics)
+            _merge_metrics(daily_stats[day_key], metrics)
+            _merge_metrics(daily_sku_stats[day_key][seller_sku], metrics)
         for seller_sku, total in day_bucket["sku_totals"].items():
             result["sku_totals"][seller_sku] += total
         for seller_sku, region_map in day_bucket["region_stats"].items():
@@ -1057,6 +1161,8 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
     result["region_rows"] = build_region_rows(result["region_stats"], result["sku_totals"])
     result["monthly_rows"] = build_monthly_rows(monthly_stats)
     result["monthly_sku_rows"] = build_monthly_sku_rows(monthly_sku_stats)
+    result["daily_sku_rows"] = build_daily_sku_rows(daily_sku_stats)
+    result["daily_rows"] = build_daily_rows(daily_stats, result["daily_sku_rows"])
     result["structured_rows"] = structured_rows
     result["summary"]["sku_count"] = len(result["sku_rows"])
     result["summary"]["region_count"] = len(result["region_rows"])

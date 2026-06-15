@@ -18,6 +18,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from order_analysis_core import (
     MappingDetectionError,
     analyze_prepared_order_cache,
+    build_daily_workbook,
     build_monthly_workbook,
     build_region_workbook,
     build_sku_workbook,
@@ -274,6 +275,7 @@ def analyze_inputs(
     build_sku_workbook(analysis['sku_rows']).save(workspace / 'exports' / 'sku_metrics.xlsx')
     build_region_workbook(analysis['region_rows']).save(workspace / 'exports' / 'region_metrics.xlsx')
     build_monthly_workbook(analysis['monthly_rows'], analysis['monthly_sku_rows']).save(workspace / 'exports' / 'monthly_metrics.xlsx')
+    build_daily_workbook(analysis['daily_rows'], analysis['daily_sku_rows']).save(workspace / 'exports' / 'daily_metrics.xlsx')
     build_structured_workbook(analysis['structured_rows']).save(workspace / 'exports' / 'structured_orders.xlsx')
 
     payload = {

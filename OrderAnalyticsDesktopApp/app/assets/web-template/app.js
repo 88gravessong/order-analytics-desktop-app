@@ -217,7 +217,7 @@ function setStatus(message, tone = "idle") {
 }
 
 function setDownloadsEnabled(enabled) {
-  ["skuDownload", "regionDownload", "monthlyDownload", "structuredDownload"].forEach((id) => {
+  ["skuDownload", "regionDownload", "monthlyDownload", "dailyDownload", "structuredDownload"].forEach((id) => {
     document.getElementById(id).classList.toggle("disabled", !enabled);
   });
 }
