@@ -1,0 +1,17 @@
+[project]
+name = "order-analytics-desktop"
+version = "1.0.0"
+description = "Local order analytics desktop service for Excel and CSV exports"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=2.3,<4",
+    "openpyxl>=3.1,<4",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.14,<7",
+]
+
+[tool.uv]
+package = false

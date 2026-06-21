@@ -8,6 +8,7 @@ from datetime import datetime
 from io import BytesIO
 import json
 from pathlib import Path
+import sys
 import threading
 import time
 from uuid import uuid4
@@ -28,7 +29,10 @@ from order_analysis_core import (
 )
 
 
-APP_ROOT = Path(__file__).resolve().parents[1]
+if getattr(sys, 'frozen', False):
+    APP_ROOT = Path(getattr(sys, '_MEIPASS')) / 'app'
+else:
+    APP_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = APP_ROOT / 'assets' / 'web-template'
 DEFAULT_PORT = 8765
 DATE_BASIS = 'Created Time'
@@ -473,7 +477,12 @@ def preload_inputs(workspace: Path, args):
 
 def main():
     args = parse_args()
-    workspace = Path(args.workspace).expanduser().resolve() if args.workspace else (Path.cwd() / 'order-analysis-service').resolve()
+    if args.workspace:
+        workspace = Path(args.workspace).expanduser().resolve()
+    elif getattr(sys, 'frozen', False):
+        workspace = (Path.home() / 'Documents' / 'OrderAnalyticsWorkspace').resolve()
+    else:
+        workspace = (Path.cwd() / 'order-analysis-service').resolve()
     ensure_workspace(workspace)
     write_report_payload(workspace, load_existing_payload(workspace, args.preset))
 

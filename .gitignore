@@ -3,11 +3,15 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.venv/
 
 # Local generated reports and runtime workspaces
 order-analysis-service/
 OrderAnalyticsDesktopApp/workspace/
 OrderAnalyticsDesktopApp/workspace-test/
+OrderAnalyticsDesktopApp/build/
+OrderAnalyticsDesktopApp/dist/
+OrderAnalyticsDesktopApp/*.spec
 
 # OS/editor noise
 .DS_Store
