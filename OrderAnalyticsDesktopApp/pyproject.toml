@@ -1,6 +1,6 @@
 [project]
 name = "order-analytics-desktop"
-version = "1.0.0"
+version = "1.1.0"
 description = "Local order analytics desktop service for Excel and CSV exports"
 requires-python = ">=3.10"
 dependencies = [

@@ -1,0 +1,71 @@
+{
+  "name": "order-analytics-client",
+  "version": "1.1.0",
+  "description": "Order Analytics desktop client",
+  "main": "main.js",
+  "author": "88gravessong",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "39.2.7",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.88gravessong.orderanalytics",
+    "productName": "Order Analytics",
+    "asar": true,
+    "directories": {
+      "output": "../client-dist"
+    },
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend-dist",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "OrderAnalytics-Client-Windows-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Order Analytics"
+    },
+    "mac": {
+      "icon": "assets/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.business",
+      "artifactName": "OrderAnalytics-Client-macOS-${version}-${arch}.${ext}",
+      "identity": null
+    }
+  }
+}

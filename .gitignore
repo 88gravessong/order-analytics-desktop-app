@@ -12,6 +12,10 @@ OrderAnalyticsDesktopApp/workspace-test/
 OrderAnalyticsDesktopApp/build/
 OrderAnalyticsDesktopApp/dist/
 OrderAnalyticsDesktopApp/*.spec
+OrderAnalyticsDesktopApp/backend-build/
+OrderAnalyticsDesktopApp/backend-dist/
+OrderAnalyticsDesktopApp/client-dist/
+OrderAnalyticsDesktopApp/client/node_modules/
 
 # OS/editor noise
 .DS_Store
