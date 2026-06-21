@@ -1,6 +1,6 @@
 {
   "name": "order-analytics-client",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Order Analytics desktop client",
   "main": "main.js",
   "author": "88gravessong",
@@ -17,6 +17,7 @@
   "build": {
     "appId": "com.88gravessong.orderanalytics",
     "productName": "Order Analytics",
+    "afterPack": "scripts/after-pack.js",
     "asar": true,
     "directories": {
       "output": "../client-dist"
@@ -64,8 +65,7 @@
         "zip"
       ],
       "category": "public.app-category.business",
-      "artifactName": "OrderAnalytics-Client-macOS-${version}-${arch}.${ext}",
-      "identity": null
+      "artifactName": "OrderAnalytics-Client-macOS-${version}-${arch}.${ext}"
     }
   }
 }

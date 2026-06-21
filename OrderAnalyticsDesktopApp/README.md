@@ -24,7 +24,21 @@ Electron 桌面客户端，内置 Python 分析引擎。启动后直接显示订
 
 `~/Documents/OrderAnalyticsWorkspace/exports`
 
-未签名应用首次打开时，macOS 可能要求在“系统设置 > 隐私与安全性”中确认打开。
+macOS 客户端使用临时签名，但未经过 Apple Developer ID 公证。首次打开如果被
+Gatekeeper 阻止：
+
+1. 把应用拖到“应用程序”。
+2. 尝试打开一次并点击“取消”。
+3. 打开“系统设置 > 隐私与安全性”，点击“仍要打开”。
+
+如果系统错误地提示应用“已损坏”，在终端执行：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Order Analytics.app"
+open "/Applications/Order Analytics.app"
+```
+
+这是移除浏览器下载附加的隔离属性，不会修改应用内容。
 
 ## 源码运行
 
