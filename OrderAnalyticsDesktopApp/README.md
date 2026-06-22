@@ -24,6 +24,8 @@ Electron 桌面客户端，内置 Python 分析引擎。启动后直接显示订
 
 `~/Documents/OrderAnalyticsWorkspace/exports`
 
+Windows 安装器为机器级安装。安装到 `Program Files` 等受保护目录时会自动请求管理员权限。
+
 macOS 客户端使用临时签名，但未经过 Apple Developer ID 公证。首次打开如果被
 Gatekeeper 阻止：
 
