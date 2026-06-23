@@ -30,7 +30,7 @@
 
             <section class="command-deck">
                 <form id="uploadForm" class="upload-form">
-                    <div class="ingest-lane">
+                    <div class="upload-row">
                         <div class="field field-files">
                             <div class="file-picker">
                                 <input id="fileInput" name="files" type="file" accept=".xlsx,.csv" multiple required>
@@ -40,10 +40,6 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    <section id="datePanel" class="date-panel disabled">
-                        <p id="dateHint" class="sr-only">选择文件后自动识别日期范围。</p>
 
                         <div id="datePresetGroup" class="preset-group">
                             <button type="button" class="preset-chip active" data-date-mode="full_range">全范围</button>
@@ -53,37 +49,42 @@
                             <button type="button" class="preset-chip" data-date-mode="current_month">本月</button>
                             <button type="button" class="preset-chip" data-date-mode="custom">自定义</button>
                         </div>
+                    </div>
 
-                        <div class="date-summary-grid">
-                            <article class="date-summary-card">
-                                <span>文件全范围</span>
+                    <section id="datePanel" class="date-panel disabled">
+                        <p id="dateHint" class="sr-only">选择文件后自动识别日期范围。</p>
+
+                        <div class="date-info-bar">
+                            <span class="date-info-item">
+                                <span class="date-info-label">文件全范围</span>
                                 <strong id="detectedRangeText">等待探测</strong>
-                            </article>
-                            <article class="date-summary-card">
-                                <span>当前选择</span>
+                            </span>
+                            <span class="date-info-sep">|</span>
+                            <span class="date-info-item">
+                                <span class="date-info-label">当前选择</span>
                                 <strong id="selectedRangeText">未选择</strong>
-                            </article>
-                            <article class="date-summary-card">
-                                <span>当前模式</span>
+                            </span>
+                            <span class="date-info-sep">|</span>
+                            <span class="date-info-item">
+                                <span class="date-info-label">模式</span>
                                 <strong id="selectedModeText">全范围</strong>
-                            </article>
+                            </span>
                         </div>
 
-                        <div class="field-row date-field-row">
-                            <div id="startDateField" class="field soft">
-                                <label for="startDateInput">开始日期</label>
-                                <input id="startDateInput" name="start_date" type="date">
+                        <div class="control-row">
+                            <div class="field-row date-field-row">
+                                <div id="startDateField" class="field soft">
+                                    <label for="startDateInput">开始</label>
+                                    <input id="startDateInput" name="start_date" type="date">
+                                </div>
+                                <div id="endDateField" class="field soft">
+                                    <label for="endDateInput">结束</label>
+                                    <input id="endDateInput" name="end_date" type="date">
+                                </div>
                             </div>
-                            <div id="endDateField" class="field soft">
-                                <label for="endDateInput">结束日期</label>
-                                <input id="endDateInput" name="end_date" type="date">
-                            </div>
+                            <button id="submitButton" class="button primary" type="submit">分析当前日期范围</button>
                         </div>
                     </section>
-
-                    <div class="actions">
-                        <button id="submitButton" class="button primary" type="submit">分析当前日期范围</button>
-                    </div>
                 </form>
                 <div id="statusBox" class="status-box idle">等待上传文件</div>
             </section>
