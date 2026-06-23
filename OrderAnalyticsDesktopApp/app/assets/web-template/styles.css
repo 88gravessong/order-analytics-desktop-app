@@ -533,32 +533,36 @@ select {
 }
 
 .status-box {
-    margin-top: 10px;
-    padding: 10px 12px;
-    border-left: 3px solid transparent;
-    background: var(--panel);
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
     font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-    font-weight: 600;
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+    background: var(--slate-a3);
+    color: var(--ink-muted);
 }
 
 .status-box.idle {
+    background: var(--slate-a3);
     color: var(--ink-muted);
-    border-color: var(--slate-a6);
 }
 
 .status-box.busy {
     color: var(--warn);
-    border-color: var(--warn-line);
+    background: var(--warn-soft);
 }
 
 .status-box.success {
     color: var(--success);
-    border-color: var(--success-line);
+    background: var(--success-soft);
 }
 
 .status-box.error {
     color: var(--danger);
-    border-color: var(--danger-line);
+    background: var(--danger-soft);
 }
 
 .summary-grid {
