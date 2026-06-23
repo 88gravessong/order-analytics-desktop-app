@@ -61,5 +61,47 @@ npm run dist -- --win --x64
 # 或 npm run dist -- --mac --arm64
 ```
 
+## 发布与自动更新
+
+已安装的 Windows 和 macOS 客户端会在启动后自动检查 GitHub Releases：
+
+- 有新版本时自动在后台下载，并显示下载进度。
+- 下载完成后可立即重启安装，也可稍后退出应用时安装。
+- 开发模式（`npm start`）不会请求更新服务。
+- 更新日志写入 Electron 用户数据目录下的 `updater.log`。
+
+发布新版本时，`client/package.json` 与 `pyproject.toml` 的版本号必须一致，
+Git 标签也必须使用相同版本，例如三处均为 `1.2.0` / `v1.2.0`。推荐流程：
+
+```bash
+# 1. 修改并测试代码
+# 2. 同步更新 client/package.json、client/package-lock.json、
+#    pyproject.toml 和 uv.lock 中的版本号
+git commit -am "发布 v1.2.0"
+git tag v1.2.0
+git push origin main
+git push origin v1.2.0
+```
+
+标签会触发 `.github/workflows/build-desktop.yml`，分别构建：
+
+- Windows x64：`latest.yml`、NSIS 安装器及 blockmap
+- macOS Apple Silicon：`latest-arm64-mac.yml`、DMG、ZIP 及 blockmap
+- macOS Intel：`latest-x64-mac.yml`、DMG、ZIP 及 blockmap
+
+工作流会把安装包和更新元数据一起上传到同一个 GitHub Release。不要手动删除
+Release 中的 `.yml` 或 `.blockmap` 文件，否则客户端无法发现更新或执行差分下载。
+
+### 验证自动更新
+
+1. 安装并启动旧版本客户端，确认当前版本可正常运行。
+2. 发布一个版本号更高的新标签，并等待 GitHub Actions 三个平台全部完成。
+3. 检查 Release 同时包含安装包、ZIP、更新 `.yml` 和 `.blockmap`。
+4. 重新启动旧版本客户端，确认依次出现检查、发现版本、下载进度和重启安装提示。
+5. 重启安装后确认新版本号、Python 分析服务和导出功能正常。
+
+macOS 自动更新要求应用经过代码签名。当前构建使用临时签名，可用于内部验证，
+但面向更广泛团队稳定分发时，建议配置 Apple Developer ID 签名与公证。
+
 Windows 原有浏览器启动器 `Launch Order Analytics.cmd` 和 macOS 源码启动器
 `Launch Order Analytics.command` 继续保留，作为轻量备用入口。

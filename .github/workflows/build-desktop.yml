@@ -18,12 +18,15 @@ jobs:
           - os: windows-latest
             artifact: OrderAnalytics-Client-Windows
             build_args: --win --x64
+            update_channel: latest
           - os: macos-15
             artifact: OrderAnalytics-Client-macOS-Apple-Silicon
             build_args: --mac --arm64
+            update_channel: latest-arm64
           - os: macos-15-intel
             artifact: OrderAnalytics-Client-macOS-Intel
             build_args: --mac --x64
+            update_channel: latest-x64
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -42,7 +45,7 @@ jobs:
       - run: uv sync --dev
       - run: uv run python build_desktop.py
       - run: npm --prefix client ci
-      - run: npm --prefix client run dist -- ${{ matrix.build_args }}
+      - run: npm --prefix client run dist -- ${{ matrix.build_args }} --config.publish.channel=${{ matrix.update_channel }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - name: Verify macOS app signature
@@ -60,6 +63,8 @@ jobs:
             OrderAnalyticsDesktopApp/client-dist/*.exe
             OrderAnalyticsDesktopApp/client-dist/*.dmg
             OrderAnalyticsDesktopApp/client-dist/*.zip
+            OrderAnalyticsDesktopApp/client-dist/*.yml
+            OrderAnalyticsDesktopApp/client-dist/*.blockmap
 
   release:
     if: startsWith(github.ref, 'refs/tags/')

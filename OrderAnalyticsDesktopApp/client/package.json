@@ -1,9 +1,13 @@
 {
   "name": "order-analytics-client",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Order Analytics desktop client",
   "main": "main.js",
   "author": "88gravessong",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/88gravessong/order-analytics-desktop-app.git"
+  },
   "license": "UNLICENSED",
   "private": true,
   "scripts": {
@@ -17,6 +21,15 @@
   "build": {
     "appId": "com.88gravessong.orderanalytics",
     "productName": "Order Analytics",
+    "electronUpdaterCompatibility": ">=2.16",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "88gravessong",
+        "repo": "order-analytics-desktop-app",
+        "channel": "latest"
+      }
+    ],
     "afterPack": "scripts/after-pack.js",
     "asar": true,
     "directories": {
@@ -69,5 +82,8 @@
       "category": "public.app-category.business",
       "artifactName": "OrderAnalytics-Client-macOS-${version}-${arch}.${ext}"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }
