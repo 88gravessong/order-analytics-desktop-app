@@ -45,7 +45,7 @@ jobs:
       - run: uv sync --dev
       - run: uv run python build_desktop.py
       - run: npm --prefix client ci
-      - run: npm --prefix client run dist -- ${{ matrix.build_args }} --config.publish.channel=${{ matrix.update_channel }}
+      - run: npm --prefix client run dist -- ${{ matrix.build_args }} --config.publish.channel=${{ matrix.update_channel }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - name: Verify macOS app signature
