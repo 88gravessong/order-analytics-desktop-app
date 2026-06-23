@@ -525,7 +525,11 @@ function updateCustomDateRange() {
     startDate: startInput.value || null,
     endDate: endInput.value || null,
   };
-  renderDatePanel();
+  setText("selectedRangeText", hasSelectedRange()
+    ? formatRange(state.selectedDateRange.startDate, state.selectedDateRange.endDate)
+    : "未选择");
+  document.getElementById("submitButton").disabled =
+    state.busy || state.inspectBusy || !hasInspection() || !hasSelectedRange();
 }
 
 function bindEvents() {
@@ -561,12 +565,12 @@ function bindEvents() {
     });
   });
 
-  document.getElementById("startDateInput").addEventListener("change", () => {
+  document.getElementById("startDateInput").addEventListener("input", () => {
     if (state.dateMode !== "custom") return;
     updateCustomDateRange();
   });
 
-  document.getElementById("endDateInput").addEventListener("change", () => {
+  document.getElementById("endDateInput").addEventListener("input", () => {
     if (state.dateMode !== "custom") return;
     updateCustomDateRange();
   });
