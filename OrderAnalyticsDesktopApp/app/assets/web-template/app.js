@@ -9,6 +9,34 @@ const DATE_MODE_LABELS = {
   custom: "自定义",
 };
 
+const DEFAULT_SORT_BY_VIEW = {
+  sku: "total-desc",
+  region: "total-desc",
+  monthly: "dimension-asc",
+  daily: "dimension-asc",
+};
+
+const VIEW_LABELS = {
+  sku: "SKU 汇总",
+  region: "地区分析",
+  monthly: "月度总览",
+  daily: "日度总览",
+};
+
+const VIEW_SEARCH_PLACEHOLDERS = {
+  sku: "搜索 SKU",
+  region: "搜索 SKU / 地区",
+  monthly: "搜索月份，如 2026-06",
+  daily: "搜索日期，如 2026-06-23",
+};
+
+const VIEW_DIMENSION_SORT_LABELS = {
+  sku: "按 SKU 升序",
+  region: "按 SKU / 地区升序",
+  monthly: "按月份升序",
+  daily: "按日期升序",
+};
+
 const EMPTY_DATA = {
   metadata: {
     generatedAt: null,
@@ -27,10 +55,12 @@ const EMPTY_DATA = {
     sku_count: 0,
     region_count: 0,
     month_count: 0,
+    day_count: 0,
   },
   skuRows: [],
   regionRows: [],
   monthlyRows: [],
+  dailyRows: [],
   diagnostics: {
     files: [],
     unknown_statuses: [],
@@ -102,6 +132,7 @@ function normalizeReport(payload) {
     skuRows: payload?.skuRows || [],
     regionRows: payload?.regionRows || [],
     monthlyRows: payload?.monthlyRows || [],
+    dailyRows: payload?.dailyRows || [],
   };
   normalized.metadata.dateBasis = normalized.metadata.dateBasis || "Created Time";
   normalized.metadata.detectedStartDate = normalized.metadata.detectedStartDate || normalized.metadata.startDate;
@@ -244,21 +275,6 @@ function renderFileSelection() {
   hint.textContent = `首个文件: ${fileInput.files[0].name}`;
 }
 
-function summaryCards() {
-  const cards = [
-    ["处理文件数", DATA.summary?.total_files || 0],
-    ["总订单数", DATA.summary?.total_orders || 0],
-    ["SKU 数量", DATA.summary?.sku_count || 0],
-    ["地区行数", DATA.summary?.region_count || 0],
-  ];
-  document.getElementById("summaryGrid").innerHTML = cards.map(([label, value]) => `
-    <article class="summary-card">
-      <span>${label}</span>
-      <strong>${value}</strong>
-    </article>
-  `).join("");
-}
-
 function runMeta() {
   const metadata = DATA.metadata || {};
   const matched = DATA.diagnostics?.matched_columns || {};
@@ -296,21 +312,59 @@ function renderDiagnostics() {
     : `<li><span>无未归类状态</span><strong>0</strong></li>`;
 }
 
+function currentSourceRows() {
+  if (state.view === "region") return DATA.regionRows || [];
+  if (state.view === "monthly") return DATA.monthlyRows || [];
+  if (state.view === "daily") return DATA.dailyRows || [];
+  return DATA.skuRows || [];
+}
+
+function currentSearchHaystack(row) {
+  if (state.view === "region") return `${row.seller_sku || ""} ${row.region || ""}`.toLowerCase();
+  if (state.view === "monthly") return `${row.month || ""}`.toLowerCase();
+  if (state.view === "daily") return `${row.date || ""}`.toLowerCase();
+  return `${row.seller_sku || ""}`.toLowerCase();
+}
+
+function currentDimensionValue(row) {
+  if (state.view === "region") return `${row.seller_sku || ""} ${row.region || ""}`;
+  if (state.view === "monthly") return `${row.month || ""}`;
+  if (state.view === "daily") return `${row.date || ""}`;
+  return `${row.seller_sku || ""}`;
+}
+
+function renderToolbarContext() {
+  const searchInput = document.getElementById("searchInput");
+  const sortSelect = document.getElementById("sortSelect");
+  const dimensionOption = sortSelect?.querySelector('option[value="dimension-asc"]');
+
+  if (searchInput) {
+    searchInput.placeholder = VIEW_SEARCH_PLACEHOLDERS[state.view] || "搜索";
+    if (searchInput.value !== state.search) {
+      searchInput.value = state.search;
+    }
+  }
+  if (dimensionOption) {
+    dimensionOption.textContent = VIEW_DIMENSION_SORT_LABELS[state.view] || "按维度升序";
+  }
+  if (sortSelect && sortSelect.value !== state.sort) {
+    sortSelect.value = state.sort;
+  }
+}
+
 function currentRows() {
-  const rows = state.view === "sku" ? [...(DATA.skuRows || [])] : [...(DATA.regionRows || [])];
+  const rows = [...currentSourceRows()];
   const search = state.search.trim().toLowerCase();
   const filtered = rows.filter((row) => {
-    const haystack = state.view === "sku"
-      ? `${row.seller_sku}`.toLowerCase()
-      : `${row.seller_sku} ${row.region}`.toLowerCase();
-    return !search || haystack.includes(search);
+    return !search || currentSearchHaystack(row).includes(search);
   });
 
   const sorters = {
-    "total-desc": (a, b) => b.total - a.total,
-    "sign-desc": (a, b) => b.sign_rate - a.sign_rate,
-    "refund-desc": (a, b) => b.refund_rate - a.refund_rate,
-    "sku-asc": (a, b) => `${a.seller_sku}`.localeCompare(`${b.seller_sku}`),
+    "total-desc": (a, b) => Number(b.total || 0) - Number(a.total || 0),
+    "sign-desc": (a, b) => Number(b.sign_rate || 0) - Number(a.sign_rate || 0),
+    "refund-desc": (a, b) => Number(b.refund_rate || 0) - Number(a.refund_rate || 0),
+    "dimension-asc": (a, b) => currentDimensionValue(a).localeCompare(currentDimensionValue(b), "zh-Hans-u-kn-true"),
+    "sku-asc": (a, b) => currentDimensionValue(a).localeCompare(currentDimensionValue(b), "zh-Hans-u-kn-true"),
   };
   filtered.sort(sorters[state.sort] || sorters["total-desc"]);
   return filtered;
@@ -366,8 +420,48 @@ function regionTable(rows) {
   return `<thead><tr>${headers.map((label) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
 }
 
+function monthlyTable(rows) {
+  const headers = ["序号", "月份", "订单数", "签收率", "已完成率", "已送达率", "退款率", "发货前取消率", "发货后取消率", "仍在途率"];
+  const body = rows.map((row, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td><strong>${row.month}</strong></td>
+      <td>${row.total}</td>
+      <td><span class="pill ${metricClass(row.sign_rate)}">${row.sign_rate}%</span></td>
+      <td>${row.completed_rate}%</td>
+      <td>${row.delivered_rate}%</td>
+      <td><span class="pill ${metricClass(row.refund_rate, true)}">${row.refund_rate}%</span></td>
+      <td>${row.cancel_before_rate}%</td>
+      <td>${row.cancel_after_rate}%</td>
+      <td>${row.in_transit_rate}%</td>
+    </tr>
+  `).join("");
+  return `<thead><tr>${headers.map((label) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
+}
+
+function dailyTable(rows) {
+  const headers = ["序号", "日期", "订单数", "SKU 数", "签收率", "已完成率", "已送达率", "退款率", "发货前取消率", "发货后取消率", "仍在途率"];
+  const body = rows.map((row, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td><strong>${row.date}</strong></td>
+      <td>${row.total}</td>
+      <td>${row.sku_count}</td>
+      <td><span class="pill ${metricClass(row.sign_rate)}">${row.sign_rate}%</span></td>
+      <td>${row.completed_rate}%</td>
+      <td>${row.delivered_rate}%</td>
+      <td><span class="pill ${metricClass(row.refund_rate, true)}">${row.refund_rate}%</span></td>
+      <td>${row.cancel_before_rate}%</td>
+      <td>${row.cancel_after_rate}%</td>
+      <td>${row.in_transit_rate}%</td>
+    </tr>
+  `).join("");
+  return `<thead><tr>${headers.map((label) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
+}
+
 function renderTable() {
-  document.getElementById("tableTitle").textContent = state.view === "sku" ? "SKU 汇总" : "地区分析";
+  renderToolbarContext();
+  document.getElementById("tableTitle").textContent = VIEW_LABELS[state.view] || "SKU 汇总";
 
   if (!hasData()) {
     document.getElementById("dataTable").innerHTML = emptyTable("等待分析", "上传订单表格并确认日期范围后，这里会显示分析结果。");
@@ -376,11 +470,22 @@ function renderTable() {
 
   const rows = currentRows();
   if (!rows.length) {
-    document.getElementById("dataTable").innerHTML = emptyTable("无匹配数据", "当前搜索条件下没有结果。");
+    const message = state.search
+      ? "当前搜索条件下没有结果。"
+      : `${VIEW_LABELS[state.view] || "当前视图"}暂无数据，请重新分析当前文件后刷新。`;
+    document.getElementById("dataTable").innerHTML = emptyTable("无匹配数据", message);
     return;
   }
 
-  document.getElementById("dataTable").innerHTML = state.view === "sku" ? skuTable(rows) : regionTable(rows);
+  if (state.view === "region") {
+    document.getElementById("dataTable").innerHTML = regionTable(rows);
+  } else if (state.view === "monthly") {
+    document.getElementById("dataTable").innerHTML = monthlyTable(rows);
+  } else if (state.view === "daily") {
+    document.getElementById("dataTable").innerHTML = dailyTable(rows);
+  } else {
+    document.getElementById("dataTable").innerHTML = skuTable(rows);
+  }
 }
 
 function renderDatePanel() {
@@ -430,7 +535,6 @@ function renderDatePanel() {
 
 function renderAll() {
   renderFileSelection();
-  summaryCards();
   runMeta();
   renderDiagnostics();
   renderTable();
@@ -535,7 +639,13 @@ function updateCustomDateRange() {
 function bindEvents() {
   document.querySelectorAll(".tab").forEach((button) => {
     button.addEventListener("click", () => {
-      state.view = button.dataset.view;
+      const nextView = button.dataset.view;
+      const changedView = state.view !== nextView;
+      state.view = nextView;
+      if (changedView) {
+        state.search = "";
+        state.sort = DEFAULT_SORT_BY_VIEW[nextView] || "total-desc";
+      }
       document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab === button));
       renderTable();
     });
@@ -547,7 +657,7 @@ function bindEvents() {
   });
 
   document.getElementById("sortSelect").addEventListener("change", (event) => {
-    state.sort = event.target.value;
+    state.sort = event.target.value === "sku-asc" ? "dimension-asc" : event.target.value;
     renderTable();
   });
 

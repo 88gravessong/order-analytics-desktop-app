@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 import sys
@@ -9,7 +10,7 @@ import unittest
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "app" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from order_analysis_core import prepare_order_cache
+from order_analysis_core import analyze_prepared_order_cache, prepare_order_cache
 
 
 class CountryRegionFallbackTests(unittest.TestCase):
@@ -46,6 +47,25 @@ class CountryRegionFallbackTests(unittest.TestCase):
 
         self.assertEqual(prepared["matched_columns"]["region"], "State")
         self.assertEqual(prepared["normalized_rows"][0]["region"], "Central Region")
+
+    def test_prepared_analysis_exposes_monthly_and_daily_summary_rows(self):
+        csv_bytes = (
+            "Order ID,Order Substatus,Cancelation/Return Type,Seller SKU,"
+            "Created Time,Shipped Time,State\n"
+            "1,已送达,,V200-01,22/06/2026 13:20:39,"
+            "22/06/2026 15:00:00,Central Region\n"
+            "2,运输中,,V200-02,23/06/2026 13:20:39,,North Region\n"
+        ).encode("utf-8-sig")
+        stream = BytesIO(csv_bytes)
+        stream.name = "orders-two-days.csv"
+
+        prepared = prepare_order_cache([stream], require_region=True)
+        analysis = analyze_prepared_order_cache(prepared, date(2026, 6, 22), date(2026, 6, 23))
+
+        self.assertEqual(analysis["summary"]["month_count"], 1)
+        self.assertEqual(analysis["summary"]["day_count"], 2)
+        self.assertEqual([row["month"] for row in analysis["monthly_rows"]], ["2026-06"])
+        self.assertEqual([row["date"] for row in analysis["daily_rows"]], ["2026-06-22", "2026-06-23"])
 
 
 if __name__ == "__main__":

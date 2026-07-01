@@ -89,10 +89,12 @@ def build_empty_payload(preset: str) -> dict:
             'sku_count': 0,
             'region_count': 0,
             'month_count': 0,
+            'day_count': 0,
         },
         'skuRows': [],
         'regionRows': [],
         'monthlyRows': [],
+        'dailyRows': [],
         'diagnostics': {
             'files': [],
             'unknown_statuses': [],
@@ -111,6 +113,7 @@ def normalize_payload(payload: dict, preset: str) -> dict:
     normalized['skuRows'] = (payload or {}).get('skuRows', normalized['skuRows'])
     normalized['regionRows'] = (payload or {}).get('regionRows', normalized['regionRows'])
     normalized['monthlyRows'] = (payload or {}).get('monthlyRows', normalized['monthlyRows'])
+    normalized['dailyRows'] = (payload or {}).get('dailyRows', normalized['dailyRows'])
 
     metadata = normalized['metadata']
     metadata['dateBasis'] = metadata.get('dateBasis') or DATE_BASIS
@@ -298,6 +301,7 @@ def analyze_inputs(
         'skuRows': analysis['sku_rows'],
         'regionRows': analysis['region_rows'],
         'monthlyRows': analysis['monthly_rows'],
+        'dailyRows': analysis['daily_rows'],
         'diagnostics': analysis['diagnostics'],
     }
     payload = normalize_payload(payload, preset)

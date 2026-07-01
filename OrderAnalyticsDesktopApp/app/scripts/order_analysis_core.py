@@ -515,6 +515,7 @@ def _init_result_container() -> dict:
             "sku_count": 0,
             "region_count": 0,
             "month_count": 0,
+            "day_count": 0,
         },
     }
 
@@ -1195,6 +1196,7 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
     result["summary"]["sku_count"] = len(result["sku_rows"])
     result["summary"]["region_count"] = len(result["region_rows"])
     result["summary"]["month_count"] = len(result["monthly_rows"])
+    result["summary"]["day_count"] = len(result["daily_rows"])
     result["summary"]["total_files"] = len(prepared.get("files", []))
     result["diagnostics"]["unknown_statuses"] = [
         {
