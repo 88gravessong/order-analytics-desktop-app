@@ -272,7 +272,7 @@ a {
 
 .command-deck {
     margin-top: 14px;
-    padding: 18px;
+    padding: 14px 16px;
     border: 1px solid var(--slate-a5);
     background: var(--panel);
     backdrop-filter: blur(10px);
@@ -281,14 +281,24 @@ a {
 
 .upload-form {
     display: grid;
-    gap: 14px;
+    gap: 10px;
 }
 
-.ingest-lane {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0;
+.upload-row {
+    display: flex;
+    gap: 12px;
     align-items: stretch;
+}
+
+.upload-row .field-files {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.upload-row .preset-group {
+    flex: 0 0 auto;
+    align-self: center;
+    flex-wrap: nowrap;
 }
 
 .ingest-copy h2,
@@ -347,10 +357,10 @@ select {
     position: relative;
     display: grid;
     align-items: center;
-    min-height: 76px;
-    padding: 16px 18px;
+    min-height: 56px;
+    padding: 12px 16px;
     border: 1px dashed var(--slate-8);
-    border-radius: 18px;
+    border-radius: 14px;
     background: var(--slate-1);
     overflow: hidden;
     cursor: pointer;
@@ -401,14 +411,67 @@ select {
 
 .date-panel {
     display: grid;
-    gap: 12px;
-    padding: 16px;
-    border: 1px solid var(--slate-a5);
-    background: var(--panel);
+    gap: 10px;
 }
 
 .date-panel.disabled {
-    opacity: 0.7;
+    opacity: 0.6;
+}
+
+.date-info-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--slate-a5);
+    background: var(--slate-2);
+    border-radius: 10px;
+    font-size: 0.88rem;
+    overflow: hidden;
+}
+
+.date-info-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.date-info-label {
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-muted);
+    white-space: nowrap;
+}
+
+.date-info-item strong {
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.date-info-sep {
+    color: var(--slate-a6);
+    user-select: none;
+}
+
+.control-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.control-row .date-field-row {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.control-row .button {
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .date-panel-header {
@@ -433,52 +496,25 @@ select {
 .preset-group {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
 }
 
 .preset-chip {
-    padding: 8px 12px;
+    padding: 6px 12px;
     border: 1px solid var(--slate-a6);
     border-radius: 999px;
     background: var(--slate-1);
     color: var(--ink-soft);
     font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-    font-size: 0.92rem;
+    font-size: 0.82rem;
     font-weight: 700;
+    white-space: nowrap;
 }
 
 .preset-chip.active {
     color: white;
     background: var(--accent);
     border-color: transparent;
-}
-
-.date-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-}
-
-.date-summary-card {
-    padding: 10px 12px;
-    border-top: 1px solid var(--slate-a5);
-    border-bottom: 1px solid var(--slate-a5);
-}
-
-.date-summary-card span {
-    display: block;
-    margin-bottom: 4px;
-    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--ink-muted);
-}
-
-.date-summary-card strong {
-    display: block;
-    font-size: 0.98rem;
-    line-height: 1.35;
 }
 
 .field-row {
@@ -496,48 +532,39 @@ select {
     box-shadow: 0 0 0 4px rgba(62, 99, 221, 0.12);
 }
 
-.actions {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 18px;
-    flex-wrap: wrap;
-    padding-top: 12px;
-    border-top: 1px solid var(--slate-a5);
-}
-
-.submit-copy {
-    max-width: 520px;
-}
-
 .status-box {
-    margin-top: 12px;
-    padding: 10px 12px;
-    border-left: 3px solid transparent;
-    background: var(--panel);
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
     font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-    font-weight: 600;
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+    background: var(--slate-a3);
+    color: var(--ink-muted);
 }
 
 .status-box.idle {
+    background: var(--slate-a3);
     color: var(--ink-muted);
-    border-color: var(--slate-a6);
 }
 
 .status-box.busy {
     color: var(--warn);
-    border-color: var(--warn-line);
+    background: var(--warn-soft);
 }
 
 .status-box.success {
     color: var(--success);
-    border-color: var(--success-line);
+    background: var(--success-soft);
 }
 
 .status-box.error {
     color: var(--danger);
-    border-color: var(--danger-line);
+    background: var(--danger-soft);
 }
+
 
 .workspace-shell {
     margin-top: 24px;
@@ -775,11 +802,17 @@ select:focus,
 
 @media (max-width: 1180px) {
     .hero,
-    .ingest-lane,
     .workspace-shell {
         grid-template-columns: 1fr;
     }
 
+    .upload-row {
+        flex-direction: column;
+    }
+
+    .upload-row .preset-group {
+        flex-wrap: wrap;
+    }
 }
 
 @media (max-width: 820px) {
@@ -792,14 +825,20 @@ select:focus,
         min-height: auto;
         padding: 22px 18px;
     }
-
-    .date-summary-grid,
-    .field-row {
+    .field-row,
+    .control-row {
         grid-template-columns: 1fr;
     }
 
+    .control-row {
+        flex-direction: column;
+    }
+
+    .date-info-bar {
+        flex-wrap: wrap;
+    }
+
     .toolbar-strip,
-    .actions,
     .date-panel-header {
         flex-direction: column;
         align-items: stretch;
@@ -818,4 +857,3 @@ select:focus,
         align-items: start;
     }
 }
-
