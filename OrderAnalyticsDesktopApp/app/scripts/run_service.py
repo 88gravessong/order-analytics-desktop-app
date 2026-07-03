@@ -101,13 +101,17 @@ def build_empty_payload(preset: str) -> dict:
         'matrixRows': [],
         'riskRows': [],
         'comparison': {
+            'mode': 'none',
+            'label': '暂无可比数据',
             'currentRange': {'startDate': None, 'endDate': None},
             'previousRange': None,
             'summaryDelta': None,
             'skuDeltas': [],
             'regionDeltas': [],
             'dailyDeltas': [],
+            'emptyReason': '当前日期范围内没有足够数据生成周期对比。',
         },
+        'comparisonOptions': [],
         'diagnostics': {
             'files': [],
             'unknown_statuses': [],
@@ -133,6 +137,7 @@ def normalize_payload(payload: dict, preset: str) -> dict:
     normalized['matrixRows'] = (payload or {}).get('matrixRows', normalized['matrixRows'])
     normalized['riskRows'] = (payload or {}).get('riskRows', normalized['riskRows'])
     normalized['comparison'] = (payload or {}).get('comparison', normalized['comparison'])
+    normalized['comparisonOptions'] = (payload or {}).get('comparisonOptions', normalized['comparisonOptions'])
 
     metadata = normalized['metadata']
     metadata['dateBasis'] = metadata.get('dateBasis') or DATE_BASIS
@@ -327,6 +332,7 @@ def analyze_inputs(
         'matrixRows': analysis['matrix_rows'],
         'riskRows': analysis['risk_rows'],
         'comparison': analysis['comparison'],
+        'comparisonOptions': analysis['comparison_options'],
         'diagnostics': analysis['diagnostics'],
     }
     payload = normalize_payload(payload, preset)

@@ -30,6 +30,7 @@ REQUIRED_SKU_FIELDS = (
     "shipped_time",
     "created_time",
 )
+OPTIONAL_FIELDS = ("order_id",)
 REGION_FIELD = "region"
 METRIC_KEYS = (
     "total",
@@ -56,6 +57,7 @@ BUCKET_LABELS = {
 DEFAULT_MAPPING_PRESETS = {
     "cn_en": {
         "columns": {
+            "order_id": ["order id", "order_id", "order no", "order number", "订单号", "订单编号"],
             "seller_sku": ["seller sku", "seller_sku", "sku", "商家sku", "seller sku id", "variation"],
             "order_substatus": ["order substatus", "order sub status", "订单子状态", "子状态"],
             "cancel_type": [
@@ -673,15 +675,21 @@ def build_comparison_payload(
     current_end: date,
     previous_start: date,
     previous_end: date,
+    mode: str = "previous_period",
+    label: str = "上一周期",
+    empty_reason: str = "对比周期没有订单数据。",
 ) -> dict:
     if previous_result["summary"].get("total_orders", 0) <= 0:
         return {
+            "mode": mode,
+            "label": label,
             "currentRange": {"startDate": current_start.isoformat(), "endDate": current_end.isoformat()},
             "previousRange": {"startDate": previous_start.isoformat(), "endDate": previous_end.isoformat()},
             "summaryDelta": None,
             "skuDeltas": [],
             "regionDeltas": [],
             "dailyDeltas": [],
+            "emptyReason": empty_reason,
         }
 
     current_overall = _overall_metric_row(current_result["sku_stats"].values())
@@ -706,13 +714,136 @@ def build_comparison_payload(
     region_deltas.sort(key=lambda row: (row["sign_delta"] if row["sign_delta"] is not None else 0, -row["total"]))
 
     return {
+        "mode": mode,
+        "label": label,
         "currentRange": {"startDate": current_start.isoformat(), "endDate": current_end.isoformat()},
         "previousRange": {"startDate": previous_start.isoformat(), "endDate": previous_end.isoformat()},
         "summaryDelta": _metric_delta_row(current_overall, previous_overall),
         "skuDeltas": sku_deltas,
         "regionDeltas": region_deltas,
         "dailyDeltas": current_result.get("daily_rows", []),
+        "emptyReason": None,
     }
+
+
+def _empty_comparison_payload(start_date: date, end_date: date) -> dict:
+    return {
+        "mode": "none",
+        "label": "暂无可比数据",
+        "currentRange": {"startDate": start_date.isoformat(), "endDate": end_date.isoformat()},
+        "previousRange": None,
+        "summaryDelta": None,
+        "skuDeltas": [],
+        "regionDeltas": [],
+        "dailyDeltas": [],
+        "emptyReason": "当前日期范围内没有足够数据生成周期对比。",
+    }
+
+
+def _comparison_has_data(comparison: dict) -> bool:
+    return comparison.get("summaryDelta") is not None
+
+
+def build_comparison_options(prepared: dict, current_result: dict, start_date: date, end_date: date) -> tuple[dict, List[dict], dict]:
+    period_days = (end_date - start_date).days + 1
+
+    previous_end = start_date - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=period_days - 1)
+    previous_result = analyze_prepared_order_cache(
+        prepared,
+        previous_start,
+        previous_end,
+        include_insights=False,
+    )
+    previous_period = build_comparison_payload(
+        current_result=current_result,
+        previous_result=previous_result,
+        current_start=start_date,
+        current_end=end_date,
+        previous_start=previous_start,
+        previous_end=previous_end,
+        mode="previous_period",
+        label="上一周期",
+        empty_reason="上一等长周期没有订单数据。",
+    )
+
+    options = [previous_period]
+    weekly = None
+    split_half = None
+
+    if period_days >= 14:
+        weekly_current_start = end_date - timedelta(days=6)
+        weekly_previous_end = weekly_current_start - timedelta(days=1)
+        weekly_previous_start = weekly_previous_end - timedelta(days=6)
+        if weekly_previous_start >= start_date:
+            weekly_current_result = analyze_prepared_order_cache(
+                prepared,
+                weekly_current_start,
+                end_date,
+                include_insights=False,
+            )
+            weekly_previous_result = analyze_prepared_order_cache(
+                prepared,
+                weekly_previous_start,
+                weekly_previous_end,
+                include_insights=False,
+            )
+            weekly = build_comparison_payload(
+                current_result=weekly_current_result,
+                previous_result=weekly_previous_result,
+                current_start=weekly_current_start,
+                current_end=end_date,
+                previous_start=weekly_previous_start,
+                previous_end=weekly_previous_end,
+                mode="weekly",
+                label="最近两周",
+                empty_reason="最近 14 天内没有足够订单数据做逐周对比。",
+            )
+
+    if period_days >= 2:
+        first_half_days = period_days // 2
+        split_previous_start = start_date
+        split_previous_end = start_date + timedelta(days=first_half_days - 1)
+        split_current_start = split_previous_end + timedelta(days=1)
+        split_current_result = analyze_prepared_order_cache(
+            prepared,
+            split_current_start,
+            end_date,
+            include_insights=False,
+        )
+        split_previous_result = analyze_prepared_order_cache(
+            prepared,
+            split_previous_start,
+            split_previous_end,
+            include_insights=False,
+        )
+        split_half = build_comparison_payload(
+            current_result=split_current_result,
+            previous_result=split_previous_result,
+            current_start=split_current_start,
+            current_end=end_date,
+            previous_start=split_previous_start,
+            previous_end=split_previous_end,
+            mode="split_half",
+            label="对半切",
+            empty_reason="前半段没有订单数据，无法做对半切对比。",
+        )
+
+    if split_half is not None:
+        options.append(split_half)
+    if weekly is not None:
+        options.append(weekly)
+
+    for candidate in (previous_period, weekly, split_half):
+        if candidate is not None and _comparison_has_data(candidate):
+            if candidate["mode"] == "previous_period":
+                return candidate, options, previous_result
+            break
+    if weekly is not None and _comparison_has_data(weekly):
+        return weekly, options, previous_result
+    if split_half is not None and _comparison_has_data(split_half):
+        return split_half, options, previous_result
+    return _empty_comparison_payload(start_date, end_date), options, previous_result
 
 
 def _risk_candidate(kind: str, key: str, label: str, row: dict, baseline: dict, previous: dict | None, filters: dict) -> dict | None:
@@ -729,16 +860,24 @@ def _risk_candidate(kind: str, key: str, label: str, row: dict, baseline: dict, 
     baseline_cancel_after = float(baseline.get("cancel_after_rate", 0.0) or 0.0)
 
     signals = [
-        ("sign_rate", max(0.0, baseline_sign - sign_rate) * 1.4, f"签收率 {sign_rate}%，低于整体 {round(baseline_sign - sign_rate, 2)}pp"),
-        ("refund_rate", max(0.0, refund_rate - baseline_refund) * 2.0, f"退款率 {refund_rate}%，高于整体 {round(refund_rate - baseline_refund, 2)}pp"),
+        (
+            "sign_rate",
+            max(0.0, baseline_sign - sign_rate) * 1.4,
+            f"签收率 {sign_rate}%，整体 {baseline_sign}%，低 {round(baseline_sign - sign_rate, 2)} 个百分点",
+        ),
+        (
+            "refund_rate",
+            max(0.0, refund_rate - baseline_refund) * 2.0,
+            f"退款率 {refund_rate}%，整体 {baseline_refund}%，高 {round(refund_rate - baseline_refund, 2)} 个百分点",
+        ),
         (
             "cancel_after_rate",
             max(0.0, cancel_after_rate - baseline_cancel_after) * 1.8,
-            f"发货后取消率 {cancel_after_rate}%，高于整体 {round(cancel_after_rate - baseline_cancel_after, 2)}pp",
+            f"发货后取消率 {cancel_after_rate}%，整体 {baseline_cancel_after}%，高 {round(cancel_after_rate - baseline_cancel_after, 2)} 个百分点",
         ),
     ]
     if sign_delta is not None and sign_delta < 0:
-        signals.append(("sign_delta", abs(sign_delta) * 2.2, f"签收率较上一周期下降 {abs(sign_delta)}pp"))
+        signals.append(("sign_delta", abs(sign_delta) * 2.2, f"签收率比上一周期低 {abs(sign_delta)} 个百分点"))
 
     primary_metric, base_score, reason = max(signals, key=lambda item: item[1])
     if base_score <= 0:
@@ -1081,6 +1220,7 @@ def build_daily_workbook(daily_rows: List[dict], daily_sku_rows: Dict[str, List[
 
 def build_structured_workbook(structured_rows: List[dict]) -> Workbook:
     headers = [
+        "订单号",
         "文件",
         "Created Date",
         "月份",
@@ -1100,6 +1240,7 @@ def build_structured_workbook(structured_rows: List[dict]) -> Workbook:
         created_date = row.get("created_date", "")
         data.append(
             [
+                row.get("order_id", ""),
                 row.get("file", ""),
                 created_date,
                 created_date[:7],
@@ -1262,6 +1403,9 @@ def prepare_order_cache(
             file_label=file_label,
             header_row=header_row,
         )
+        optional_positions, optional_matched_columns = _match_columns(headers, mapping_config, OPTIONAL_FIELDS)
+        positions.update(optional_positions)
+        matched_columns.update(optional_matched_columns)
 
         if not prepared["matched_columns"]:
             prepared["matched_columns"] = matched_columns
@@ -1286,6 +1430,9 @@ def prepare_order_cache(
             order_substatus = row[positions["order_substatus"]] if positions["order_substatus"] < len(row) else None
             cancel_type = row[positions["cancel_type"]] if positions["cancel_type"] < len(row) else None
             shipped_time = row[positions["shipped_time"]] if positions["shipped_time"] < len(row) else None
+            order_id = ""
+            if "order_id" in positions and positions["order_id"] < len(row) and row[positions["order_id"]] is not None:
+                order_id = str(row[positions["order_id"]]).strip()
             region = ""
             if REGION_FIELD in positions and positions[REGION_FIELD] < len(row) and row[positions[REGION_FIELD]] is not None:
                 region = str(row[positions[REGION_FIELD]]).strip()
@@ -1300,6 +1447,7 @@ def prepare_order_cache(
             dated_rows += 1
 
             normalized_row = {
+                "order_id": order_id,
                 "file": file_label,
                 "created_date": created_date.isoformat(),
                 "month": created_date.strftime("%Y-%m"),
@@ -1437,33 +1585,23 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
         for (order_substatus, cancel_type), count in overall_unknown.most_common(UNKNOWN_LIMIT)
     ]
     if include_insights:
-        period_days = (end_date - start_date).days + 1
-        previous_end = start_date - timedelta(days=1)
-        previous_start = previous_end - timedelta(days=period_days - 1)
-        previous_result = analyze_prepared_order_cache(
-            prepared,
-            previous_start,
-            previous_end,
-            include_insights=False,
-        )
-        result["comparison"] = build_comparison_payload(
-            current_result=result,
-            previous_result=previous_result,
-            current_start=start_date,
-            current_end=end_date,
-            previous_start=previous_start,
-            previous_end=previous_end,
-        )
+        comparison, comparison_options, previous_result = build_comparison_options(prepared, result, start_date, end_date)
+        result["comparison"] = comparison
+        result["comparison_options"] = comparison_options
         result["risk_rows"] = build_risk_rows(result, previous_result)
     else:
         result["comparison"] = {
+            "mode": "none",
+            "label": "暂无可比数据",
             "currentRange": {"startDate": start_date.isoformat(), "endDate": end_date.isoformat()},
             "previousRange": None,
             "summaryDelta": None,
             "skuDeltas": [],
             "regionDeltas": [],
             "dailyDeltas": [],
+            "emptyReason": "当前日期范围内没有足够数据生成周期对比。",
         }
+        result["comparison_options"] = []
         result["risk_rows"] = []
     return result
 

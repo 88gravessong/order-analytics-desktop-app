@@ -569,11 +569,13 @@ select {
 .workspace-shell {
     margin-top: 24px;
     display: grid;
-    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.55fr);
-    gap: 22px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
 }
 
 .workspace-main {
+    min-width: 0;
+    overflow: hidden;
     display: grid;
     background: var(--panel-strong);
     color: var(--ink);
@@ -582,6 +584,7 @@ select {
 }
 
 .toolbar {
+    min-width: 0;
     display: grid;
     gap: 14px;
     padding: 18px 20px;
@@ -650,6 +653,8 @@ select {
 }
 
 .data-stage {
+    min-width: 0;
+    overflow: hidden;
     padding: 0 0 10px;
 }
 
@@ -662,12 +667,15 @@ select {
 }
 
 .table-wrap {
+    min-width: 0;
+    width: 100%;
     overflow: auto;
     max-height: 72vh;
     padding: 0 12px 12px;
 }
 
 .insight-stage {
+    min-width: 0;
     padding: 0 18px 18px;
 }
 
@@ -718,7 +726,6 @@ select {
     background: var(--slate-1);
 }
 
-.risk-layout,
 .comparison-columns {
     display: grid;
     grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
@@ -728,7 +735,7 @@ select {
 .risk-list,
 .comparison-list {
     display: grid;
-    gap: 10px;
+    gap: 8px;
     align-content: start;
 }
 
@@ -745,22 +752,20 @@ select {
 
 .risk-card {
     display: grid;
-    grid-template-columns: 68px minmax(0, 1fr);
-    gap: 10px 14px;
-    padding: 12px;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 1fr);
+    gap: 16px;
+    align-items: center;
+    padding: 14px 16px;
 }
 
-.risk-score {
-    grid-row: span 2;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 58px;
-    border-radius: 8px;
-    background: var(--danger-soft);
-    color: var(--danger);
-    font-size: 1.3rem;
-    font-weight: 800;
+.risk-info,
+.risk-visual {
+    display: grid;
+    min-width: 0;
+}
+
+.risk-info {
+    gap: 7px;
 }
 
 .risk-copy {
@@ -786,6 +791,34 @@ select {
 
 .risk-meta {
     font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.risk-visual {
+    gap: 8px;
+}
+
+.risk-visual-label {
+    color: var(--ink-muted);
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.risk-meter {
+    height: 10px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--danger-soft);
+}
+
+.risk-meter span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--warn), var(--danger));
 }
 
 .insight-note,
@@ -803,6 +836,9 @@ select {
 }
 
 .matrix-wrap {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
     overflow: auto;
     max-height: 62vh;
     border: 1px solid var(--slate-a5);
@@ -813,19 +849,34 @@ select {
     min-width: 980px;
 }
 
-.matrix-table th {
+.matrix-table thead th {
     position: sticky;
     top: 0;
     z-index: 2;
+    background: var(--slate-2);
+}
+
+.matrix-table thead th:first-child {
+    left: 0;
+    z-index: 5;
+    width: 240px;
+    min-width: 240px;
+    max-width: 240px;
+    box-shadow: 10px 0 14px -14px rgba(15, 23, 42, 0.7);
 }
 
 .matrix-table tbody th {
+    position: sticky;
+    top: auto;
     left: 0;
-    z-index: 1;
-    max-width: 220px;
+    z-index: 4;
+    width: 240px;
+    min-width: 240px;
+    max-width: 240px;
     overflow: hidden;
     text-overflow: ellipsis;
     background: var(--slate-2);
+    box-shadow: 10px 0 14px -14px rgba(15, 23, 42, 0.7);
 }
 
 .matrix-table td {
@@ -866,6 +917,13 @@ select {
     font-family: "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
+.comparison-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 14px;
+}
+
 .compare-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -893,14 +951,21 @@ select {
 }
 
 .compare-card em.good,
-.comparison-row em {
+.comparison-row em.good {
     color: var(--success);
     font-style: normal;
     font-weight: 700;
 }
 
-.compare-card em.bad {
+.compare-card em.bad,
+.comparison-row em.bad {
     color: var(--danger);
+    font-style: normal;
+    font-weight: 700;
+}
+
+.compare-card em.neutral {
+    color: var(--ink-muted);
     font-style: normal;
     font-weight: 700;
 }
@@ -1053,16 +1118,71 @@ tbody tr:hover {
 }
 
 .diagnostics {
+    min-width: 0;
+    border: 1px solid var(--slate-a5);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+}
+
+.diagnostics-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 13px 16px;
+    cursor: pointer;
+    color: var(--ink);
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    list-style: none;
+}
+
+.diagnostics-summary::-webkit-details-marker {
+    display: none;
+}
+
+.diagnostics-summary::after {
+    content: "+";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    border: 1px solid var(--slate-a6);
+    color: var(--ink-muted);
+    font-weight: 800;
+}
+
+.diagnostics[open] .diagnostics-summary::after {
+    content: "-";
+}
+
+.diagnostics-summary span {
     display: grid;
-    align-content: start;
-    gap: 14px;
+    gap: 2px;
+}
+
+.diagnostics-summary strong {
+    font-size: 0.96rem;
+}
+
+.diagnostics-summary em {
+    color: var(--ink-muted);
+    font-style: normal;
+    font-size: 0.84rem;
+}
+
+.diagnostics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding: 0 12px 12px;
 }
 
 .diagnostic-block {
     padding: 18px 18px 16px;
     border: 1px solid var(--slate-a5);
-    background: var(--panel);
-    box-shadow: var(--shadow);
+    background: var(--slate-1);
 }
 
 .diagnostic-block h3 {
@@ -1127,8 +1247,11 @@ select:focus,
 @media (max-width: 1180px) {
     .hero,
     .workspace-shell,
-    .risk-layout,
     .comparison-columns {
+        grid-template-columns: 1fr;
+    }
+
+    .diagnostics-grid {
         grid-template-columns: 1fr;
     }
 

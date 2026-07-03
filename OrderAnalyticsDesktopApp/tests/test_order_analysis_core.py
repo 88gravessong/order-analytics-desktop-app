@@ -93,6 +93,7 @@ class CountryRegionFallbackTests(unittest.TestCase):
 
         self.assertEqual(len(analysis["structured_rows"]), 11)
         self.assertTrue(all("2026-06-08" <= row["created_date"] <= "2026-06-14" for row in analysis["structured_rows"]))
+        self.assertEqual(analysis["structured_rows"][0]["order_id"], "8")
         self.assertEqual(len(analysis["matrix_rows"]), len(analysis["region_rows"]))
         for matrix_row, region_row in zip(analysis["matrix_rows"], analysis["region_rows"]):
             for key in (
@@ -110,6 +111,8 @@ class CountryRegionFallbackTests(unittest.TestCase):
         self.assertEqual(analysis["comparison"]["previousRange"], {"startDate": "2026-06-01", "endDate": "2026-06-07"})
         self.assertEqual(analysis["comparison"]["summaryDelta"]["total"], 11)
         self.assertLess(analysis["comparison"]["summaryDelta"]["sign_delta"], 0)
+        option_modes = [option["mode"] for option in analysis["comparison_options"]]
+        self.assertIn("previous_period", option_modes)
 
         risk_keys = {row["key"] for row in analysis["risk_rows"]}
         self.assertIn("RISK-1", risk_keys)
@@ -118,6 +121,48 @@ class CountryRegionFallbackTests(unittest.TestCase):
         risk_sku = next(row for row in analysis["sku_rows"] if row["seller_sku"] == "RISK-1")
         self.assertEqual(risk_sku["refund_rate"], 71.43)
         self.assertEqual(risk_sku["sign_rate"], 71.43)
+
+    def test_comparison_defaults_to_weekly_when_previous_period_has_no_data(self):
+        rows = [
+            "Order ID,Order Substatus,Cancelation/Return Type,Seller SKU,Created Time,Shipped Time,State",
+        ]
+        order_id = 1
+        for day in range(1, 8):
+            rows.append(f"{order_id},已完成,,SKU-A,{day:02d}/06/2026 09:00:00,01/06/2026 10:00:00,North")
+            order_id += 1
+        for day in range(8, 15):
+            rows.append(f"{order_id},已取消,,SKU-A,{day:02d}/06/2026 09:00:00,08/06/2026 10:00:00,North")
+            order_id += 1
+        csv_bytes = ("\n".join(rows) + "\n").encode("utf-8-sig")
+        stream = BytesIO(csv_bytes)
+        stream.name = "weekly-comparison-orders.csv"
+
+        prepared = prepare_order_cache([stream], require_region=True)
+        analysis = analyze_prepared_order_cache(prepared, date(2026, 6, 1), date(2026, 6, 14))
+
+        self.assertEqual(analysis["comparison"]["mode"], "weekly")
+        self.assertEqual(analysis["comparison"]["currentRange"], {"startDate": "2026-06-08", "endDate": "2026-06-14"})
+        self.assertEqual(analysis["comparison"]["previousRange"], {"startDate": "2026-06-01", "endDate": "2026-06-07"})
+        self.assertLess(analysis["comparison"]["summaryDelta"]["sign_delta"], 0)
+        option_modes = [option["mode"] for option in analysis["comparison_options"]]
+        self.assertEqual(option_modes, ["previous_period", "split_half", "weekly"])
+        previous_option = next(option for option in analysis["comparison_options"] if option["mode"] == "previous_period")
+        self.assertIsNone(previous_option["summaryDelta"])
+
+    def test_comparison_returns_empty_payload_when_no_preset_has_data(self):
+        csv_bytes = (
+            "Order ID,Order Substatus,Cancelation/Return Type,Seller SKU,Created Time,Shipped Time,State\n"
+            "1,已送达,,SKU-A,01/06/2026 09:00:00,01/06/2026 10:00:00,North\n"
+        ).encode("utf-8-sig")
+        stream = BytesIO(csv_bytes)
+        stream.name = "single-day-orders.csv"
+
+        prepared = prepare_order_cache([stream], require_region=True)
+        analysis = analyze_prepared_order_cache(prepared, date(2026, 6, 1), date(2026, 6, 1))
+
+        self.assertEqual(analysis["comparison"]["mode"], "none")
+        self.assertIsNone(analysis["comparison"]["summaryDelta"])
+        self.assertEqual([option["mode"] for option in analysis["comparison_options"]], ["previous_period"])
 
 
 if __name__ == "__main__":

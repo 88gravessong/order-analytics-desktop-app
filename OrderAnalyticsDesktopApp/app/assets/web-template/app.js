@@ -87,13 +87,17 @@ const EMPTY_DATA = {
   matrixRows: [],
   riskRows: [],
   comparison: {
+    mode: "none",
+    label: "暂无可比数据",
     currentRange: { startDate: null, endDate: null },
     previousRange: null,
     summaryDelta: null,
     skuDeltas: [],
     regionDeltas: [],
     dailyDeltas: [],
+    emptyReason: "当前日期范围内没有足够数据生成周期对比。",
   },
+  comparisonOptions: [],
   diagnostics: {
     files: [],
     unknown_statuses: [],
@@ -128,6 +132,7 @@ const state = {
   inspectRequestId: 0,
   insightView: "risk",
   matrixMetric: "sign_rate",
+  comparisonMode: "auto",
   detailFilters: {},
   detailTitle: "订单明细",
 };
@@ -168,11 +173,19 @@ function formatMetric(value, suffix = "%") {
   return `${Number(value || 0).toFixed(2).replace(/\.00$/, "")}${suffix}`;
 }
 
-function formatDelta(value, suffix = "pp") {
+function formatDelta(value, suffix = " 个百分点") {
   if (value === null || value === undefined) return "-";
   const numeric = Number(value || 0);
   const sign = numeric > 0 ? "+" : "";
   return `${sign}${numeric.toFixed(2).replace(/\.00$/, "")}${suffix}`;
+}
+
+function readableReason(value) {
+  return String(value ?? "")
+    .replace(/低于整体 ([\d.]+)pp/g, "比整体低 $1 个百分点")
+    .replace(/高于整体 ([\d.]+)pp/g, "比整体高 $1 个百分点")
+    .replace(/较上一周期下降 ([\d.]+)pp/g, "比上一周期低 $1 个百分点")
+    .replace(/([\d.]+)pp/g, "$1 个百分点");
 }
 
 function normalizeReport(payload) {
@@ -204,6 +217,10 @@ function normalizeReport(payload) {
       ...EMPTY_DATA.comparison,
       ...(payload?.comparison || {}),
     },
+    comparisonOptions: (payload?.comparisonOptions || []).map((option) => ({
+      ...EMPTY_DATA.comparison,
+      ...option,
+    })),
   };
   normalized.metadata.dateBasis = normalized.metadata.dateBasis || "Created Time";
   normalized.metadata.detectedStartDate = normalized.metadata.detectedStartDate || normalized.metadata.startDate;
@@ -552,7 +569,7 @@ function rowMatchesFilters(row, filters = {}) {
 function detailRows(filters = state.detailFilters) {
   const search = state.search.trim().toLowerCase();
   return (DATA.structuredRows || []).filter((row) => {
-    const haystack = `${row.created_date || ""} ${row.seller_sku || ""} ${row.region || ""} ${row.bucket || ""}`.toLowerCase();
+    const haystack = `${row.order_id || ""} ${row.created_date || ""} ${row.seller_sku || ""} ${row.region || ""} ${row.bucket || ""}`.toLowerCase();
     return rowMatchesFilters(row, filters) && (!search || haystack.includes(search));
   });
 }
@@ -592,6 +609,7 @@ function detailTableHTML(rows) {
     const unknownText = [unknown.order_substatus, unknown.cancel_type].filter(Boolean).join(" / ");
     return `
       <tr>
+        <td>${escapeHTML(row.order_id || "-")}</td>
         <td>${escapeHTML(row.created_date || "")}</td>
         <td><strong>${escapeHTML(row.seller_sku || "")}</strong></td>
         <td>${escapeHTML(row.region || "")}</td>
@@ -602,10 +620,10 @@ function detailTableHTML(rows) {
     `;
   }).join("");
   const more = rows.length > visibleRows.length
-    ? `<tr><td colspan="6" class="empty-cell">仅显示前 ${visibleRows.length} 条，共 ${rows.length} 条</td></tr>`
+    ? `<tr><td colspan="7" class="empty-cell">仅显示前 ${visibleRows.length} 条，共 ${rows.length} 条</td></tr>`
     : "";
   return `
-    <thead><tr><th>日期</th><th>SKU</th><th>地区</th><th>状态桶</th><th>文件</th><th>未知状态文本</th></tr></thead>
+    <thead><tr><th>订单号</th><th>日期</th><th>SKU</th><th>地区</th><th>状态桶</th><th>文件</th><th>未知状态文本</th></tr></thead>
     <tbody>${body}${more}</tbody>
   `;
 }
@@ -636,24 +654,27 @@ function riskViewHTML() {
     return `<div class="empty-insight">暂无风险项。低样本项不会进入风险榜。</div>`;
   }
   return `
-    <div class="risk-layout">
-      <div class="risk-list">
-        ${rows.map((row, index) => `
-          <button class="risk-card" type="button" data-action="detail-risk" data-index="${index}">
-            <span class="risk-score">${formatMetric(row.risk_score, "")}</span>
-            <span class="risk-copy">
-              <strong>${escapeHTML(row.label)}</strong>
-              <em>${escapeHTML(row.reason)}</em>
+    <div class="risk-list">
+      ${rows.map((row, index) => {
+        const score = Math.max(0, Math.min(100, Number(row.risk_score || 0)));
+        return `
+          <button class="risk-card" type="button" data-action="detail-risk" data-index="${index}" aria-label="查看 ${escapeHTML(row.label)} 的风险订单明细">
+            <span class="risk-info">
+              <span class="risk-copy">
+                <strong>${escapeHTML(row.label)}</strong>
+                <em>${escapeHTML(readableReason(row.reason))}</em>
+              </span>
+              <span class="risk-meta">${escapeHTML(row.type)} · ${formatNumber(row.total)} 单</span>
             </span>
-            <span class="risk-meta">${escapeHTML(row.type)} · ${formatNumber(row.total)} 单 · ${formatDelta(row.compare_delta)}</span>
+            <span class="risk-visual" aria-hidden="true">
+              <span class="risk-visual-label">风险强度</span>
+              <span class="risk-meter">
+                <span style="width: ${score}%"></span>
+              </span>
+            </span>
           </button>
-        `).join("")}
-      </div>
-      <div class="insight-note">
-        <p class="section-kicker">Priority</p>
-        <h3>点击风险项查看订单明细</h3>
-        <p class="muted">风险分来自低签收率、高退款率、高发货后取消率和上一周期变化，低于 ${RISK_MIN_TOTAL || 5} 单的样本不会进入榜单。</p>
-      </div>
+        `;
+      }).join("")}
     </div>
   `;
 }
@@ -729,15 +750,55 @@ function matrixViewHTML() {
   `;
 }
 
-function comparisonCard(label, value, delta, suffix = "pp") {
-  const tone = Number(delta || 0) < 0 ? "bad" : "good";
+function comparisonOptions() {
+  const byMode = new Map();
+  (DATA.comparisonOptions || []).forEach((option) => {
+    if (option?.mode) byMode.set(option.mode, option);
+  });
+  if (DATA.comparison?.mode && !byMode.has(DATA.comparison.mode)) {
+    byMode.set(DATA.comparison.mode, DATA.comparison);
+  }
+  return [...byMode.values()].filter((option) => option?.mode && option.mode !== "none");
+}
+
+function activeComparison() {
+  if (state.comparisonMode === "auto") return DATA.comparison || EMPTY_DATA.comparison;
+  return comparisonOptions().find((option) => option.mode === state.comparisonMode) || DATA.comparison || EMPTY_DATA.comparison;
+}
+
+function comparisonPresetChips(active) {
+  const options = comparisonOptions();
+  const autoLabel = active?.label ? `自动推荐：${active.label}` : "自动推荐";
+  return `
+    <div class="comparison-presets">
+      <button class="metric-chip ${state.comparisonMode === "auto" ? "active" : ""}" type="button" data-comparison-mode="auto">
+        ${escapeHTML(autoLabel)}
+      </button>
+      ${options.map((option) => `
+        <button class="metric-chip ${state.comparisonMode === option.mode ? "active" : ""}" type="button" data-comparison-mode="${escapeHTML(option.mode)}">
+          ${escapeHTML(option.label || option.mode)}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function comparisonCard(label, value, delta, suffix = "pp", toneMode = "higher-better") {
+  const numeric = Number(delta || 0);
+  let tone = "neutral";
+  if (toneMode === "higher-better") {
+    tone = numeric < 0 ? "bad" : numeric > 0 ? "good" : "neutral";
+  } else if (toneMode === "lower-better") {
+    tone = numeric > 0 ? "bad" : numeric < 0 ? "good" : "neutral";
+  }
   return `<article class="compare-card"><span>${label}</span><strong>${value}</strong><em class="${tone}">${formatDelta(delta, suffix)}</em></article>`;
 }
 
-function comparisonRows(rows, title, reverse = false) {
+function comparisonRows(rows, title, direction = "down") {
   const sorted = [...rows]
     .filter((row) => row.sign_delta !== null && row.sign_delta !== undefined)
-    .sort((a, b) => reverse ? b.sign_delta - a.sign_delta : a.sign_delta - b.sign_delta)
+    .filter((row) => direction === "up" ? Number(row.sign_delta) > 0 : Number(row.sign_delta) < 0)
+    .sort((a, b) => direction === "up" ? b.sign_delta - a.sign_delta : a.sign_delta - b.sign_delta)
     .slice(0, 10);
   return `
     <div class="comparison-list">
@@ -746,7 +807,7 @@ function comparisonRows(rows, title, reverse = false) {
         <button class="comparison-row" type="button" data-action="detail-sku" data-sku="${escapeHTML(row.seller_sku || "")}">
           <strong>${escapeHTML(row.seller_sku || "")}</strong>
           <span>${formatNumber(row.total)} 单</span>
-          <em>${formatDelta(row.sign_delta)}</em>
+          <em class="${direction === "up" ? "good" : "bad"}">${formatDelta(row.sign_delta)}</em>
         </button>
       `).join("") : `<p class="muted">暂无可比 SKU。</p>`}
     </div>
@@ -754,25 +815,34 @@ function comparisonRows(rows, title, reverse = false) {
 }
 
 function comparisonViewHTML() {
-  const comparison = DATA.comparison || {};
+  const comparison = activeComparison();
   const summary = comparison.summaryDelta;
+  const presets = comparisonPresetChips(comparison);
   if (!summary) {
-    return `<div class="empty-insight">无上一周期可比数据。当前周期：${escapeHTML(formatRange(comparison.currentRange?.startDate, comparison.currentRange?.endDate))}</div>`;
+    const reason = comparison.emptyReason || "当前数据不足以生成周期对比。";
+    return `
+      ${presets}
+      <div class="empty-insight">
+        ${escapeHTML(reason)}<br>
+        当前周期：${escapeHTML(formatRange(comparison.currentRange?.startDate, comparison.currentRange?.endDate))}
+      </div>
+    `;
   }
   return `
+    ${presets}
     <div class="comparison-head">
-      <span>当前 ${escapeHTML(formatRange(comparison.currentRange?.startDate, comparison.currentRange?.endDate))}</span>
-      <span>上一周期 ${escapeHTML(formatRange(comparison.previousRange?.startDate, comparison.previousRange?.endDate))}</span>
+      <span>${escapeHTML(comparison.label || "当前")} ${escapeHTML(formatRange(comparison.currentRange?.startDate, comparison.currentRange?.endDate))}</span>
+      <span>对比 ${escapeHTML(formatRange(comparison.previousRange?.startDate, comparison.previousRange?.endDate))}</span>
     </div>
     <div class="compare-grid">
-      ${comparisonCard("订单数", formatNumber(summary.total), summary.total_delta, "")}
-      ${comparisonCard("签收率", formatMetric(summary.sign_rate), summary.sign_delta)}
-      ${comparisonCard("退款率", formatMetric(summary.refund_rate), summary.refund_delta)}
-      ${comparisonCard("发货后取消率", formatMetric(summary.cancel_after_rate), summary.cancel_after_delta)}
+      ${comparisonCard("订单数", formatNumber(summary.total), summary.total_delta, "", "neutral")}
+      ${comparisonCard("签收率", formatMetric(summary.sign_rate), summary.sign_delta, " 个百分点", "higher-better")}
+      ${comparisonCard("退款率", formatMetric(summary.refund_rate), summary.refund_delta, " 个百分点", "lower-better")}
+      ${comparisonCard("发货后取消率", formatMetric(summary.cancel_after_rate), summary.cancel_after_delta, " 个百分点", "lower-better")}
     </div>
     <div class="comparison-columns">
       ${comparisonRows(comparison.skuDeltas || [], "恶化最大 SKU")}
-      ${comparisonRows(comparison.skuDeltas || [], "改善最大 SKU", true)}
+      ${comparisonRows(comparison.skuDeltas || [], "改善最大 SKU", "up")}
     </div>
   `;
 }
@@ -1029,6 +1099,13 @@ function bindEvents() {
       return;
     }
 
+    const comparisonButton = event.target.closest("[data-comparison-mode]");
+    if (comparisonButton) {
+      state.comparisonMode = comparisonButton.dataset.comparisonMode || "auto";
+      renderInsights();
+      return;
+    }
+
     const detailButton = event.target.closest("[data-action]");
     if (!detailButton) return;
     const action = detailButton.dataset.action;
@@ -1129,6 +1206,7 @@ function bindEvents() {
       DATA = normalizeReport(payload.report || EMPTY_DATA);
       state.view = "insights";
       state.insightView = "risk";
+      state.comparisonMode = "auto";
       state.search = "";
       state.sort = DEFAULT_SORT_BY_VIEW.insights;
       renderAll();
