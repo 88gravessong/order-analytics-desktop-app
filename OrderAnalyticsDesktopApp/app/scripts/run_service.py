@@ -362,6 +362,10 @@ def create_app(workspace: Path, preset: str, mapping_path: str | None) -> Flask:
     def favicon():
         return send_from_directory(TEMPLATE_DIR, 'favicon.svg')
 
+    @app.get('/vendor/<path:filename>')
+    def vendor_file(filename: str):
+        return send_from_directory(TEMPLATE_DIR / 'vendor', filename)
+
     @app.get('/generated/<path:filename>')
     def generated_file(filename: str):
         return send_from_directory(workspace / 'generated', filename)

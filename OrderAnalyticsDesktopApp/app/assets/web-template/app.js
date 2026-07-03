@@ -146,6 +146,7 @@ const EMPTY_INSPECTION = {
 };
 
 let DATA = normalizeReport(window.ORDER_ANALYTICS_DATA || EMPTY_DATA);
+let dateTrendChart = null;
 
 const state = {
   view: "sku",
@@ -812,39 +813,10 @@ function chartTickLabel(value) {
   return shortChartDateLabel(text);
 }
 
-function chartTickIndexes(count) {
-  if (count <= 0) return new Set();
-  if (count <= 10) return new Set(Array.from({ length: count }, (_, index) => index));
-  const maxTicks = 7;
-  const step = Math.ceil((count - 1) / (maxTicks - 1));
-  const indexes = new Set();
-  for (let index = 0; index < count; index += step) {
-    indexes.add(index);
-  }
-  indexes.add(count - 1);
-  if (indexes.has(count - 2)) indexes.delete(count - 2);
-  return indexes;
-}
-
 function dateLineChartHTML(rows) {
   const items = [...rows].sort((a, b) => String(a.start_date || a.label || "").localeCompare(String(b.start_date || b.label || ""), "zh-Hans-u-kn-true"));
   if (!items.length) return "";
-  const selected = state.dateMetrics.filter((key) => DATE_CHART_METRICS[key]);
-  const activeMetrics = selected.length ? selected : ["sign_rate"];
-  const width = 960;
-  const height = 320;
-  const pad = { left: 54, right: 28, top: 24, bottom: 64 };
-  const plotW = width - pad.left - pad.right;
-  const plotH = height - pad.top - pad.bottom;
-  const xFor = (index) => pad.left + (items.length === 1 ? plotW / 2 : index / (items.length - 1) * plotW);
-  const tickIndexes = chartTickIndexes(items.length);
-  const extentByMetric = Object.fromEntries(activeMetrics.map((key) => [key, dateMetricExtent(items, key)]));
-  const yFor = (row, key) => {
-    const extent = extentByMetric[key];
-    const value = dateMetricValue(row, key);
-    const position = (value - extent.min) / (extent.max - extent.min || 1);
-    return pad.top + (1 - Math.max(0, Math.min(1, position))) * plotH;
-  };
+  const activeMetrics = activeDateMetricKeys();
 
   return `
     <section class="chart-panel">
@@ -862,93 +834,134 @@ function dateLineChartHTML(rows) {
           </button>
         `).join("")}
       </div>
-      <svg class="chart-svg date-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="日期趋势折线图">
-        <line class="chart-axis" x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}"></line>
-        <line class="chart-axis" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}"></line>
-        ${[0.25, 0.5, 0.75].map((ratio) => `
-          <line class="chart-guide" x1="${pad.left}" y1="${pad.top + plotH * ratio}" x2="${width - pad.right}" y2="${pad.top + plotH * ratio}"></line>
-        `).join("")}
-        ${activeMetrics.map((key) => {
-          const metric = DATE_CHART_METRICS[key];
-          const points = items.map((row, index) => `${xFor(index).toFixed(1)},${yFor(row, key).toFixed(1)}`).join(" ");
-          return `
-            <polyline class="date-line" points="${points}" stroke="${metric.color}"></polyline>
-            ${items.map((row, index) => {
-              const label = row.label || row.date || row.month || "";
-              const tooltip = {
-                title: label,
-                note: "各指标按自身范围缩放，面板显示真实值。",
-                rows: activeMetrics.map((metricKey) => ({
-                  label: DATE_CHART_METRICS[metricKey].label,
-                  value: dateMetricText(row, metricKey),
-                  color: DATE_CHART_METRICS[metricKey].color,
-                })),
-              };
-              return `
-                <circle class="date-point" cx="${xFor(index).toFixed(1)}" cy="${yFor(row, key).toFixed(1)}" r="5"
-                  fill="${metric.color}" data-chart-tooltip="${escapeHTML(JSON.stringify(tooltip))}" tabindex="0"></circle>
-              `;
-            }).join("")}
-          `;
-        }).join("")}
-        ${items.map((row, index) => {
-          if (!tickIndexes.has(index)) return "";
-          const label = row.label || row.date || row.month || "";
-          const anchor = index === 0 ? "start" : index === items.length - 1 ? "end" : "middle";
-          return `<text class="chart-tick-label" x="${xFor(index).toFixed(1)}" y="${height - 32}" text-anchor="${anchor}">${escapeHTML(chartTickLabel(label))}</text>`;
-        }).join("")}
-      </svg>
-      <div class="chart-legend">
-        ${activeMetrics.map((key) => `
-          <span><i style="background:${DATE_CHART_METRICS[key].color}"></i>${DATE_CHART_METRICS[key].label}</span>
-        `).join("")}
+      <div class="date-chart-shell">
+        <canvas id="dateTrendCanvas" aria-label="日期趋势折线图"></canvas>
       </div>
     </section>
   `;
 }
 
-function renderChartTooltip(target) {
-  const tooltip = document.getElementById("chartTooltip");
-  if (!tooltip || !target?.dataset.chartTooltip) return;
-  let payload;
-  try {
-    payload = JSON.parse(target.dataset.chartTooltip);
-  } catch {
+function dateChartRows(rows) {
+  return [...rows].sort((a, b) => String(a.start_date || a.label || "").localeCompare(String(b.start_date || b.label || ""), "zh-Hans-u-kn-true"));
+}
+
+function activeDateMetricKeys() {
+  const selected = state.dateMetrics.filter((key) => DATE_CHART_METRICS[key]);
+  return selected.length ? selected : ["sign_rate"];
+}
+
+function destroyDateTrendChart() {
+  if (!dateTrendChart) return;
+  dateTrendChart.destroy();
+  dateTrendChart = null;
+}
+
+function mountDateTrendChart(rows = []) {
+  destroyDateTrendChart();
+  if (state.view !== "date") return;
+  const canvas = document.getElementById("dateTrendCanvas");
+  if (!canvas) return;
+  const items = dateChartRows(rows);
+  if (!items.length) return;
+  if (!window.Chart) {
+    canvas.replaceWith(Object.assign(document.createElement("div"), {
+      className: "chart-fallback",
+      textContent: "图表库未加载，无法渲染日期趋势图。",
+    }));
     return;
   }
-  tooltip.innerHTML = `
-    <strong>${escapeHTML(payload.title || "")}</strong>
-    <div class="chart-tooltip-rows">
-      ${(payload.rows || []).map((row) => `
-        <span>
-          <i style="background:${escapeHTML(row.color || "#3e63dd")}"></i>
-          <em>${escapeHTML(row.label || "")}</em>
-          <b>${escapeHTML(row.value || "")}</b>
-        </span>
-      `).join("")}
-    </div>
-    ${payload.note ? `<small>${escapeHTML(payload.note)}</small>` : ""}
-  `;
-  tooltip.hidden = false;
-}
 
-function moveChartTooltip(event) {
-  const tooltip = document.getElementById("chartTooltip");
-  if (!tooltip || tooltip.hidden) return;
-  const gap = 16;
-  const rect = tooltip.getBoundingClientRect();
-  let left = event.clientX + gap;
-  let top = event.clientY + gap;
-  if (left + rect.width > window.innerWidth - 12) left = event.clientX - rect.width - gap;
-  if (top + rect.height > window.innerHeight - 12) top = event.clientY - rect.height - gap;
-  tooltip.style.left = `${Math.max(12, left)}px`;
-  tooltip.style.top = `${Math.max(12, top)}px`;
-}
+  const activeMetrics = activeDateMetricKeys();
+  const scales = Object.fromEntries(activeMetrics.map((key) => {
+    const extent = dateMetricExtent(items, key);
+    return [`y_${key}`, {
+      type: "linear",
+      display: false,
+      min: extent.min,
+      max: extent.max,
+      grid: { display: false },
+      border: { display: false },
+    }];
+  }));
+  const labels = items.map((row) => row.label || row.date || row.month || "");
+  const datasets = activeMetrics.map((key) => {
+    const metric = DATE_CHART_METRICS[key];
+    return {
+      label: metric.label,
+      metricKey: key,
+      data: items.map((row) => dateMetricValue(row, key)),
+      yAxisID: `y_${key}`,
+      borderColor: metric.color,
+      backgroundColor: metric.color,
+      pointBackgroundColor: metric.color,
+      pointBorderColor: "#fff",
+      pointBorderWidth: 2,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      borderWidth: 3,
+      tension: 0.28,
+    };
+  });
 
-function hideChartTooltip() {
-  const tooltip = document.getElementById("chartTooltip");
-  if (!tooltip) return;
-  tooltip.hidden = true;
+  dateTrendChart = new window.Chart(canvas, {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          position: "bottom",
+          align: "start",
+          labels: {
+            usePointStyle: true,
+            boxWidth: 8,
+            boxHeight: 8,
+            color: "#60646c",
+            font: { family: "Segoe UI, Helvetica Neue, sans-serif", size: 12 },
+          },
+        },
+        tooltip: {
+          backgroundColor: "rgba(255, 255, 255, 0.98)",
+          borderColor: "rgba(28, 32, 36, 0.16)",
+          borderWidth: 1,
+          titleColor: "#1c2024",
+          bodyColor: "#1c2024",
+          padding: 12,
+          displayColors: true,
+          callbacks: {
+            title(context) {
+              return context?.[0]?.label || "";
+            },
+            label(context) {
+              const key = context.dataset.metricKey;
+              const row = items[context.dataIndex];
+              return `${context.dataset.label}: ${dateMetricText(row, key)}`;
+            },
+            footer() {
+              return "各指标独立缩放，面板显示真实值。";
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            color: "#60646c",
+            autoSkip: true,
+            maxTicksLimit: 7,
+            maxRotation: 0,
+            callback(value) {
+              return chartTickLabel(this.getLabelForValue(value));
+            },
+          },
+        },
+        ...scales,
+      },
+    },
+  });
 }
 
 function chartHTML(rows) {
@@ -1076,9 +1089,63 @@ function detailTableHTML(rows) {
     ? `<tr><td colspan="7" class="empty-cell">仅显示前 ${visibleRows.length} 条，共 ${rows.length} 条</td></tr>`
     : "";
   return `
-    <thead><tr><th>订单号</th><th>日期</th><th>SKU</th><th>地区</th><th>状态桶</th><th>文件</th><th>未知状态文本</th></tr></thead>
+    <thead>
+      <tr>
+        <th>
+          <span class="order-id-head">
+            订单号
+            <button class="copy-order-button" type="button" data-action="copy-order-ids" title="复制当前筛选出的订单号">复制</button>
+          </span>
+        </th>
+        <th>日期</th><th>SKU</th><th>地区</th><th>状态桶</th><th>文件</th><th>未知状态文本</th>
+      </tr>
+    </thead>
     <tbody>${body}${more}</tbody>
   `;
+}
+
+function detailOrderIds() {
+  return detailRows(state.detailFilters)
+    .map((row) => String(row.order_id || "").trim())
+    .filter(Boolean);
+}
+
+function setDetailCopyStatus(message, tone = "neutral") {
+  const target = document.getElementById("detailCopyStatus");
+  if (!target) return;
+  target.textContent = message;
+  target.dataset.tone = tone;
+}
+
+async function writeTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("copy_failed");
+}
+
+async function copyDetailOrderIds() {
+  const ids = detailOrderIds();
+  if (!ids.length) {
+    setDetailCopyStatus("没有可复制的订单号", "warn");
+    return;
+  }
+  try {
+    await writeTextToClipboard(ids.join("\n"));
+    setDetailCopyStatus(`已复制 ${formatNumber(ids.length)} 个订单号`, "success");
+  } catch {
+    setDetailCopyStatus("复制失败，请手动选择订单号", "warn");
+  }
 }
 
 function openDetailDrawer(filters = {}, title = "订单明细") {
@@ -1097,6 +1164,7 @@ function closeDetailDrawer() {
 function renderDetailDrawer() {
   const rows = detailRows(state.detailFilters);
   setText("detailTitle", state.detailTitle || "订单明细");
+  setDetailCopyStatus("");
   setHTML("detailSummary", detailSummaryHTML(rows, state.detailFilters));
   setHTML("detailFilterPanel", detailFilterPanelHTML(state.detailFilters));
   setHTML("detailTable", detailTableHTML(rows));
@@ -1337,10 +1405,13 @@ function renderDateGranularityTabs() {
 function renderChart(rows = []) {
   const stage = document.getElementById("chartStage");
   if (!stage) return;
+  destroyDateTrendChart();
   const html = state.view === "insights" || !hasData() ? "" : chartHTML(rows);
   stage.hidden = !html;
   stage.innerHTML = html;
-  hideChartTooltip();
+  if (state.view === "date" && html) {
+    mountDateTrendChart(rows);
+  }
 }
 
 function renderTable() {
@@ -1595,36 +1666,6 @@ function bindEvents() {
     renderTable();
   });
 
-  document.getElementById("chartStage").addEventListener("pointerover", (event) => {
-    const point = event.target.closest(".date-point[data-chart-tooltip]");
-    if (!point) return;
-    renderChartTooltip(point);
-    moveChartTooltip(event);
-  });
-
-  document.getElementById("chartStage").addEventListener("pointermove", (event) => {
-    if (!event.target.closest(".date-point[data-chart-tooltip]")) return;
-    moveChartTooltip(event);
-  });
-
-  document.getElementById("chartStage").addEventListener("pointerout", (event) => {
-    if (!event.target.closest(".date-point[data-chart-tooltip]")) return;
-    hideChartTooltip();
-  });
-
-  document.getElementById("chartStage").addEventListener("focusin", (event) => {
-    const point = event.target.closest(".date-point[data-chart-tooltip]");
-    if (!point) return;
-    const rect = point.getBoundingClientRect();
-    renderChartTooltip(point);
-    moveChartTooltip({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
-  });
-
-  document.getElementById("chartStage").addEventListener("focusout", (event) => {
-    if (!event.target.closest(".date-point[data-chart-tooltip]")) return;
-    hideChartTooltip();
-  });
-
   document.getElementById("tableStage").addEventListener("click", (event) => {
     const detailButton = event.target.closest('[data-action="table-detail"]');
     if (!detailButton) return;
@@ -1674,7 +1715,13 @@ function bindEvents() {
   });
 
   document.getElementById("detailClose").addEventListener("click", closeDetailDrawer);
-  document.getElementById("detailDrawer").addEventListener("click", (event) => {
+  document.getElementById("detailDrawer").addEventListener("click", async (event) => {
+    const copyButton = event.target.closest('[data-action="copy-order-ids"]');
+    if (copyButton) {
+      await copyDetailOrderIds();
+      return;
+    }
+
     const bucketButton = event.target.closest("[data-detail-bucket]");
     if (!bucketButton) return;
     const bucket = bucketButton.dataset.detailBucket || "";
