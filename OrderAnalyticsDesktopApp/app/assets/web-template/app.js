@@ -12,33 +12,36 @@ const DATE_MODE_LABELS = {
 const DEFAULT_SORT_BY_VIEW = {
   sku: "total-desc",
   region: "total-desc",
-  monthly: "dimension-asc",
-  daily: "dimension-asc",
+  date: "dimension-asc",
   insights: "total-desc",
 };
 
 const VIEW_LABELS = {
   sku: "SKU 汇总",
   region: "地区分析",
-  monthly: "月度总览",
-  daily: "日度总览",
+  date: "日期分析",
   insights: "洞察工作台",
 };
 
 const VIEW_SEARCH_PLACEHOLDERS = {
   sku: "搜索 SKU",
   region: "搜索 SKU / 地区",
-  monthly: "搜索月份，如 2026-06",
-  daily: "搜索日期，如 2026-06-23",
+  date: "搜索日期或周期，如 2026-06-23",
   insights: "搜索 SKU / 地区 / 日期",
 };
 
 const VIEW_DIMENSION_SORT_LABELS = {
   sku: "按 SKU 升序",
   region: "按 SKU / 地区升序",
-  monthly: "按月份升序",
-  daily: "按日期升序",
+  date: "按日期升序",
   insights: "按维度升序",
+};
+
+const DATE_GRANULARITY_LABELS = {
+  daily: "日总览",
+  weekly: "周总览",
+  biweekly: "二周总览",
+  monthly: "月总览",
 };
 
 const INSIGHT_LABELS = {
@@ -131,6 +134,7 @@ const state = {
   uploadToken: null,
   inspectRequestId: 0,
   insightView: "risk",
+  dateGranularity: "daily",
   matrixMetric: "sign_rate",
   comparisonMode: "auto",
   detailFilters: {},
@@ -178,6 +182,32 @@ function formatDelta(value, suffix = " 个百分点") {
   const numeric = Number(value || 0);
   const sign = numeric > 0 ? "+" : "";
   return `${sign}${numeric.toFixed(2).replace(/\.00$/, "")}${suffix}`;
+}
+
+function parseISODate(value) {
+  if (!value) return null;
+  const [year, month, day] = String(value).split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatISODate(date) {
+  return date ? date.toISOString().slice(0, 10) : "";
+}
+
+function addDays(date, days) {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function daysBetween(start, end) {
+  return Math.floor((end.getTime() - start.getTime()) / 86400000);
+}
+
+function rate(numerator, total) {
+  if (!total) return 0;
+  return Number((numerator / total * 100).toFixed(2));
 }
 
 function readableReason(value) {
@@ -400,24 +430,116 @@ function renderDiagnostics() {
     : `<li><span>无未归类状态</span><strong>0</strong></li>`;
 }
 
+function bucketMetricsFromRows(rows) {
+  const metrics = rows.reduce((acc, row) => {
+    const bucket = row.bucket || "unknown_status";
+    acc.total += 1;
+    acc.skus.add(row.seller_sku || "");
+    if (bucket in acc) acc[bucket] += 1;
+    return acc;
+  }, {
+    total: 0,
+    skus: new Set(),
+    completed: 0,
+    delivered: 0,
+    refund: 0,
+    cancel_before: 0,
+    cancel_after: 0,
+    in_transit: 0,
+  });
+  return {
+    total: metrics.total,
+    sku_count: metrics.skus.size,
+    sign_rate: rate(metrics.completed + metrics.delivered + metrics.refund, metrics.total),
+    completed_rate: rate(metrics.completed, metrics.total),
+    delivered_rate: rate(metrics.delivered, metrics.total),
+    refund_rate: rate(metrics.refund, metrics.total),
+    cancel_before_rate: rate(metrics.cancel_before, metrics.total),
+    cancel_after_rate: rate(metrics.cancel_after, metrics.total),
+    in_transit_rate: rate(metrics.in_transit, metrics.total),
+  };
+}
+
+function dateAnchor() {
+  const metadataStart = parseISODate(DATA.metadata?.startDate);
+  if (metadataStart) return metadataStart;
+  const dates = (DATA.structuredRows || [])
+    .map((row) => parseISODate(row.created_date))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  return dates[0] || null;
+}
+
+function dateRowsForGranularity(granularity = state.dateGranularity) {
+  const rows = DATA.structuredRows || [];
+  if (!rows.length) {
+    if (granularity === "monthly") {
+      return (DATA.monthlyRows || []).map((row) => ({ ...row, label: row.month, start_date: row.month, end_date: row.month, sku_count: row.sku_count || "-" }));
+    }
+    return (DATA.dailyRows || []).map((row) => ({ ...row, label: row.date, start_date: row.date, end_date: row.date }));
+  }
+
+  const anchor = dateAnchor();
+  const rangeEnd = parseISODate(DATA.metadata?.endDate);
+  const groups = new Map();
+  rows.forEach((row) => {
+    const created = parseISODate(row.created_date);
+    if (!created || !anchor) return;
+    let key;
+    let label;
+    let startDate;
+    let endDate;
+    if (granularity === "monthly") {
+      key = row.month || String(row.created_date || "").slice(0, 7);
+      label = key;
+      startDate = key;
+      endDate = key;
+    } else if (granularity === "weekly" || granularity === "biweekly") {
+      const windowDays = granularity === "biweekly" ? 14 : 7;
+      const index = Math.floor(daysBetween(anchor, created) / windowDays);
+      const start = addDays(anchor, index * windowDays);
+      const rawEnd = addDays(start, windowDays - 1);
+      const end = rangeEnd && rawEnd > rangeEnd ? rangeEnd : rawEnd;
+      startDate = formatISODate(start);
+      endDate = formatISODate(end);
+      key = `${startDate}|${endDate}`;
+      label = `${startDate} ~ ${endDate}`;
+    } else {
+      key = row.created_date || "";
+      label = key;
+      startDate = key;
+      endDate = key;
+    }
+    if (!groups.has(key)) {
+      groups.set(key, { key, label, start_date: startDate, end_date: endDate, sourceRows: [] });
+    }
+    groups.get(key).sourceRows.push(row);
+  });
+
+  return [...groups.values()]
+    .sort((a, b) => String(a.start_date).localeCompare(String(b.start_date), "zh-Hans-u-kn-true"))
+    .map((group) => ({
+      ...group,
+      ...bucketMetricsFromRows(group.sourceRows),
+      sourceRows: undefined,
+    }));
+}
+
 function currentSourceRows() {
   if (state.view === "region") return DATA.regionRows || [];
-  if (state.view === "monthly") return DATA.monthlyRows || [];
-  if (state.view === "daily") return DATA.dailyRows || [];
+  if (state.view === "date") return dateRowsForGranularity();
   return DATA.skuRows || [];
 }
 
 function currentSearchHaystack(row) {
   if (state.view === "region") return `${row.seller_sku || ""} ${row.region || ""}`.toLowerCase();
-  if (state.view === "monthly") return `${row.month || ""}`.toLowerCase();
-  if (state.view === "daily") return `${row.date || ""}`.toLowerCase();
+  if (state.view === "date") return `${row.label || ""} ${row.start_date || ""} ${row.end_date || ""}`.toLowerCase();
   return `${row.seller_sku || ""}`.toLowerCase();
 }
 
 function currentDimensionValue(row) {
   if (state.view === "region") return `${row.seller_sku || ""} ${row.region || ""}`;
-  if (state.view === "monthly") return `${row.month || ""}`;
-  if (state.view === "daily") return `${row.date || ""}`;
+  if (state.view === "date") return `${row.start_date || row.label || ""}`;
   return `${row.seller_sku || ""}`;
 }
 
@@ -508,31 +630,18 @@ function regionTable(rows) {
   return `<thead><tr>${headers.map((label) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
 }
 
-function monthlyTable(rows) {
-  const headers = ["序号", "月份", "订单数", "签收率", "已完成率", "已送达率", "退款率", "发货前取消率", "发货后取消率", "仍在途率"];
+function dateAnalysisTable(rows) {
+  const dimensionLabel = {
+    daily: "日期",
+    weekly: "周期",
+    biweekly: "周期",
+    monthly: "月份",
+  }[state.dateGranularity] || "日期";
+  const headers = ["序号", dimensionLabel, "订单数", "SKU 数", "签收率", "已完成率", "已送达率", "退款率", "发货前取消率", "发货后取消率", "仍在途率"];
   const body = rows.map((row, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td><strong>${row.month}</strong></td>
-      <td>${row.total}</td>
-      <td><span class="pill ${metricClass(row.sign_rate)}">${row.sign_rate}%</span></td>
-      <td>${row.completed_rate}%</td>
-      <td>${row.delivered_rate}%</td>
-      <td><span class="pill ${metricClass(row.refund_rate, true)}">${row.refund_rate}%</span></td>
-      <td>${row.cancel_before_rate}%</td>
-      <td>${row.cancel_after_rate}%</td>
-      <td>${row.in_transit_rate}%</td>
-    </tr>
-  `).join("");
-  return `<thead><tr>${headers.map((label) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
-}
-
-function dailyTable(rows) {
-  const headers = ["序号", "日期", "订单数", "SKU 数", "签收率", "已完成率", "已送达率", "退款率", "发货前取消率", "发货后取消率", "仍在途率"];
-  const body = rows.map((row, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td><strong>${row.date}</strong></td>
+      <td><strong>${escapeHTML(row.label || row.date || row.month || "")}</strong></td>
       <td>${row.total}</td>
       <td>${row.sku_count}</td>
       <td><span class="pill ${metricClass(row.sign_rate)}">${row.sign_rate}%</span></td>
@@ -545,6 +654,90 @@ function dailyTable(rows) {
     </tr>
   `).join("");
   return `<thead><tr>${headers.map((label) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
+}
+
+function chartRowsForView(rows) {
+  if (state.view === "sku") {
+    return [...rows]
+      .sort((a, b) => Number(b.total || 0) - Number(a.total || 0))
+      .slice(0, 12)
+      .map((row) => ({
+        label: row.seller_sku || "",
+        filter: row.seller_sku || "",
+        total: Number(row.total || 0),
+        rate: Number(row.sign_rate || 0),
+      }));
+  }
+  if (state.view === "region") {
+    const byRegion = new Map();
+    rows.forEach((row) => {
+      const region = row.region || "空地区";
+      const current = byRegion.get(region) || { label: region, filter: region, total: 0, signed: 0, refund: 0 };
+      const total = Number(row.total || 0);
+      current.total += total;
+      current.signed += total * Number(row.sign_rate || 0) / 100;
+      current.refund += total * Number(row.refund_rate || 0) / 100;
+      byRegion.set(region, current);
+    });
+    return [...byRegion.values()]
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 12)
+      .map((row) => ({ ...row, rate: rate(row.signed, row.total), refund_rate: rate(row.refund, row.total) }));
+  }
+  if (state.view === "date") {
+    return [...rows]
+      .sort((a, b) => String(a.start_date || a.label || "").localeCompare(String(b.start_date || b.label || ""), "zh-Hans-u-kn-true"))
+      .map((row) => ({
+        label: row.label || row.date || row.month || "",
+        filter: row.label || row.date || row.month || "",
+        total: Number(row.total || 0),
+        rate: Number(row.sign_rate || 0),
+      }));
+  }
+  return [];
+}
+
+function chartTitleForView() {
+  if (state.view === "sku") return "SKU 订单量分布";
+  if (state.view === "region") return "地区订单量分布";
+  if (state.view === "date") return `${DATE_GRANULARITY_LABELS[state.dateGranularity] || "日期"}趋势`;
+  return "";
+}
+
+function chartSubtitleForView(rows) {
+  if (state.view === "region") return "点击地区条形项可筛选该地区明细。";
+  if (state.view === "date") return "点击日期或周期可筛选对应区间。";
+  return "点击 SKU 条形项可筛选该 SKU。";
+}
+
+function chartHTML(rows) {
+  const items = chartRowsForView(rows);
+  if (!items.length || state.view === "insights") return "";
+  const maxTotal = Math.max(...items.map((item) => item.total), 1);
+  return `
+    <section class="chart-panel">
+      <div class="chart-head">
+        <div>
+          <p class="section-kicker">Chart</p>
+          <h3>${escapeHTML(chartTitleForView())}</h3>
+        </div>
+        <span>${escapeHTML(chartSubtitleForView(rows))}</span>
+      </div>
+      <div class="chart-bars">
+        ${items.map((item) => {
+          const width = Math.max(4, item.total / maxTotal * 100);
+          return `
+            <button class="chart-bar" type="button" data-chart-filter="${escapeHTML(item.filter)}" title="${escapeHTML(item.label)}">
+              <span class="chart-label">${escapeHTML(item.label)}</span>
+              <span class="chart-track"><span style="width: ${width}%"></span></span>
+              <strong>${formatNumber(item.total)} 单</strong>
+              <em>签收 ${formatMetric(item.rate)}</em>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function insightTabs() {
@@ -865,13 +1058,38 @@ function renderInsights() {
   setHTML("insightStage", `${insightTabs()}<div class="insight-body">${body}</div>`);
 }
 
+function renderDateGranularityTabs() {
+  const stage = document.getElementById("dateGranularityStage");
+  if (!stage) return;
+  stage.hidden = state.view !== "date";
+  if (stage.hidden) {
+    stage.innerHTML = "";
+    return;
+  }
+  stage.innerHTML = Object.entries(DATE_GRANULARITY_LABELS).map(([key, label]) => `
+    <button class="date-tab ${state.dateGranularity === key ? "active" : ""}" type="button" data-date-granularity="${key}">
+      ${label}
+    </button>
+  `).join("");
+}
+
+function renderChart(rows = []) {
+  const stage = document.getElementById("chartStage");
+  if (!stage) return;
+  const html = state.view === "insights" || !hasData() ? "" : chartHTML(rows);
+  stage.hidden = !html;
+  stage.innerHTML = html;
+}
+
 function renderTable() {
   renderToolbarContext();
+  renderDateGranularityTabs();
   document.getElementById("tableTitle").textContent = VIEW_LABELS[state.view] || "SKU 汇总";
   document.getElementById("insightStage").hidden = state.view !== "insights";
   document.getElementById("tableStage").hidden = state.view === "insights";
 
   if (state.view === "insights") {
+    renderChart([]);
     if (!hasData()) {
       setHTML("insightStage", `<div class="empty-insight">上传订单表格并确认日期范围后，这里会显示洞察工作台。</div>`);
       return;
@@ -881,11 +1099,13 @@ function renderTable() {
   }
 
   if (!hasData()) {
+    renderChart([]);
     document.getElementById("dataTable").innerHTML = emptyTable("等待分析", "上传订单表格并确认日期范围后，这里会显示分析结果。");
     return;
   }
 
   const rows = currentRows();
+  renderChart(rows);
   if (!rows.length) {
     const message = state.search
       ? "当前搜索条件下没有结果。"
@@ -896,10 +1116,8 @@ function renderTable() {
 
   if (state.view === "region") {
     document.getElementById("dataTable").innerHTML = regionTable(rows);
-  } else if (state.view === "monthly") {
-    document.getElementById("dataTable").innerHTML = monthlyTable(rows);
-  } else if (state.view === "daily") {
-    document.getElementById("dataTable").innerHTML = dailyTable(rows);
+  } else if (state.view === "date") {
+    document.getElementById("dataTable").innerHTML = dateAnalysisTable(rows);
   } else {
     document.getElementById("dataTable").innerHTML = skuTable(rows);
   }
@@ -1084,6 +1302,22 @@ function bindEvents() {
     renderTable();
   });
 
+  document.getElementById("dateGranularityStage").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-date-granularity]");
+    if (!button) return;
+    state.dateGranularity = button.dataset.dateGranularity || "daily";
+    state.search = "";
+    state.sort = DEFAULT_SORT_BY_VIEW.date;
+    renderTable();
+  });
+
+  document.getElementById("chartStage").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-chart-filter]");
+    if (!button) return;
+    state.search = button.dataset.chartFilter || "";
+    renderTable();
+  });
+
   document.getElementById("insightStage").addEventListener("click", (event) => {
     const insightButton = event.target.closest("[data-insight-view]");
     if (insightButton) {
@@ -1204,11 +1438,13 @@ function bindEvents() {
         throw new Error(payload.error || "分析失败");
       }
       DATA = normalizeReport(payload.report || EMPTY_DATA);
-      state.view = "insights";
+      if (state.view === "insights") {
+        state.view = "sku";
+      }
       state.insightView = "risk";
       state.comparisonMode = "auto";
       state.search = "";
-      state.sort = DEFAULT_SORT_BY_VIEW.insights;
+      state.sort = DEFAULT_SORT_BY_VIEW[state.view] || "total-desc";
       renderAll();
       setStatus(`分析完成，共处理 ${DATA.summary.total_orders || 0} 单`, "success");
     } catch (error) {

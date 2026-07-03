@@ -128,8 +128,7 @@
                             <div class="tab-group">
                                 <button class="tab active" data-view="sku">SKU 汇总</button>
                                 <button class="tab" data-view="region">地区分析</button>
-                                <button class="tab" data-view="monthly">月度总览</button>
-                                <button class="tab" data-view="daily">日度总览</button>
+                                <button class="tab" data-view="date">日期分析</button>
                                 <button class="tab" data-view="insights">洞察</button>
                             </div>
                             <div class="toolbar-controls">
@@ -148,6 +147,8 @@
                         <div class="panel-heading">
                             <p class="muted">上传后可直接搜索、排序，并下载最新生成的 Excel。</p>
                         </div>
+                        <div id="dateGranularityStage" class="date-tabs" hidden></div>
+                        <div id="chartStage" class="chart-stage" hidden></div>
                         <div id="insightStage" class="insight-stage" hidden></div>
                         <div id="tableStage" class="table-wrap">
                             <table id="dataTable"></table>
@@ -179,6 +180,6 @@
     </aside>
 
     <script src="./generated/report-data.js"></script>
-    <script src="./app.js?v=20260702-insights-ui"></script>
+    <script src="./app.js?v=20260703-date-charts"></script>
 </body>
 </html>
