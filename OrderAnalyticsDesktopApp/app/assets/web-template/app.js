@@ -680,19 +680,19 @@ function chartRowsForView(rows) {
     return [...byRegion.values()]
       .sort((a, b) => b.total - a.total)
       .slice(0, 12)
-      .map((row) => ({ ...row, rate: rate(row.signed, row.total), refund_rate: rate(row.refund, row.total) }));
+      .map((row) => ({ ...row, weighted: row.signed, rate: rate(row.signed, row.total), refund_rate: rate(row.refund, row.total) }));
   }
   return [];
 }
 
 function chartTitleForView() {
-  if (state.view === "region") return "地区订单量分布";
+  if (state.view === "region") return "地区签收贡献";
   if (state.view === "date") return `${DATE_GRANULARITY_LABELS[state.dateGranularity] || "日期"}趋势`;
   return "";
 }
 
 function chartSubtitleForView(rows) {
-  if (state.view === "region") return "点击地区条形项可筛选该地区明细。";
+  if (state.view === "region") return "条形长度 = 订单数 × 签收率；点击地区筛选明细。";
   if (state.view === "date") return "各指标按自身范围缩放，悬停点位查看真实数值。";
   return "";
 }
@@ -700,7 +700,7 @@ function chartSubtitleForView(rows) {
 function regionBarChartHTML(rows) {
   const items = chartRowsForView(rows);
   if (!items.length) return "";
-  const maxTotal = Math.max(...items.map((item) => item.total), 1);
+  const maxWeighted = Math.max(...items.map((item) => item.weighted), 1);
   return `
     <section class="chart-panel">
       <div class="chart-head">
@@ -712,13 +712,13 @@ function regionBarChartHTML(rows) {
       </div>
       <div class="chart-bars">
         ${items.map((item) => {
-          const width = Math.max(4, item.total / maxTotal * 100);
+          const width = Math.max(4, item.weighted / maxWeighted * 100);
           return `
-            <button class="chart-bar" type="button" data-chart-filter="${escapeHTML(item.filter)}" title="${escapeHTML(item.label)}">
+            <button class="chart-bar" type="button" data-chart-filter="${escapeHTML(item.filter)}" title="${escapeHTML(`${item.label}：${formatNumber(item.total)} 单，签收 ${formatMetric(item.rate)}`)}">
               <span class="chart-label">${escapeHTML(item.label)}</span>
               <span class="chart-track"><span style="width: ${width}%"></span></span>
-              <strong>${formatNumber(item.total)} 单</strong>
-              <em>签收 ${formatMetric(item.rate)}</em>
+              <strong>${formatNumber(Math.round(item.weighted))} 签收单</strong>
+              <em>${formatNumber(item.total)} 单 · ${formatMetric(item.rate)}</em>
             </button>
           `;
         }).join("")}
@@ -765,6 +765,35 @@ function dateMetricExtent(items, key) {
   return { min, max };
 }
 
+function shortChartDateLabel(value) {
+  const text = String(value || "");
+  const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateMatch) return `${dateMatch[2]}-${dateMatch[3]}`;
+  return text;
+}
+
+function chartTickLabel(value) {
+  const text = String(value || "");
+  if (text.includes(" ~ ")) {
+    return text.split(" ~ ").map(shortChartDateLabel).join(" ~ ");
+  }
+  return shortChartDateLabel(text);
+}
+
+function chartTickIndexes(count) {
+  if (count <= 0) return new Set();
+  if (count <= 10) return new Set(Array.from({ length: count }, (_, index) => index));
+  const maxTicks = 7;
+  const step = Math.ceil((count - 1) / (maxTicks - 1));
+  const indexes = new Set();
+  for (let index = 0; index < count; index += step) {
+    indexes.add(index);
+  }
+  indexes.add(count - 1);
+  if (indexes.has(count - 2)) indexes.delete(count - 2);
+  return indexes;
+}
+
 function dateLineChartHTML(rows) {
   const items = [...rows].sort((a, b) => String(a.start_date || a.label || "").localeCompare(String(b.start_date || b.label || ""), "zh-Hans-u-kn-true"));
   if (!items.length) return "";
@@ -776,6 +805,7 @@ function dateLineChartHTML(rows) {
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const xFor = (index) => pad.left + (items.length === 1 ? plotW / 2 : index / (items.length - 1) * plotW);
+  const tickIndexes = chartTickIndexes(items.length);
   const extentByMetric = Object.fromEntries(activeMetrics.map((key) => [key, dateMetricExtent(items, key)]));
   const yFor = (row, key) => {
     const extent = extentByMetric[key];
@@ -830,10 +860,10 @@ function dateLineChartHTML(rows) {
           `;
         }).join("")}
         ${items.map((row, index) => {
-          if (items.length > 10 && index % Math.ceil(items.length / 8) !== 0 && index !== items.length - 1) return "";
+          if (!tickIndexes.has(index)) return "";
           const label = row.label || row.date || row.month || "";
           const anchor = index === 0 ? "start" : index === items.length - 1 ? "end" : "middle";
-          return `<text class="chart-tick-label" x="${xFor(index).toFixed(1)}" y="${height - 32}" text-anchor="${anchor}">${escapeHTML(label.replace(" ~ ", " "))}</text>`;
+          return `<text class="chart-tick-label" x="${xFor(index).toFixed(1)}" y="${height - 32}" text-anchor="${anchor}">${escapeHTML(chartTickLabel(label))}</text>`;
         }).join("")}
       </svg>
       <div class="chart-legend">
