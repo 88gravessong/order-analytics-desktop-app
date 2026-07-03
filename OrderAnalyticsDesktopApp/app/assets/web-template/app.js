@@ -14,6 +14,7 @@ const DEFAULT_SORT_BY_VIEW = {
   region: "total-desc",
   monthly: "dimension-asc",
   daily: "dimension-asc",
+  insights: "total-desc",
 };
 
 const VIEW_LABELS = {
@@ -21,6 +22,7 @@ const VIEW_LABELS = {
   region: "地区分析",
   monthly: "月度总览",
   daily: "日度总览",
+  insights: "洞察工作台",
 };
 
 const VIEW_SEARCH_PLACEHOLDERS = {
@@ -28,6 +30,7 @@ const VIEW_SEARCH_PLACEHOLDERS = {
   region: "搜索 SKU / 地区",
   monthly: "搜索月份，如 2026-06",
   daily: "搜索日期，如 2026-06-23",
+  insights: "搜索 SKU / 地区 / 日期",
 };
 
 const VIEW_DIMENSION_SORT_LABELS = {
@@ -35,7 +38,24 @@ const VIEW_DIMENSION_SORT_LABELS = {
   region: "按 SKU / 地区升序",
   monthly: "按月份升序",
   daily: "按日期升序",
+  insights: "按维度升序",
 };
+
+const INSIGHT_LABELS = {
+  risk: "风险雷达",
+  matrix: "SKU×地区矩阵",
+  comparison: "周期对比",
+  details: "明细",
+};
+
+const MATRIX_METRICS = {
+  sign_rate: { label: "签收率", suffix: "%", reverse: false },
+  refund_rate: { label: "退款率", suffix: "%", reverse: true },
+  cancel_after_rate: { label: "发货后取消率", suffix: "%", reverse: true },
+  total: { label: "订单量", suffix: "", reverse: false },
+};
+
+const RISK_MIN_TOTAL = 5;
 
 const EMPTY_DATA = {
   metadata: {
@@ -61,6 +81,19 @@ const EMPTY_DATA = {
   regionRows: [],
   monthlyRows: [],
   dailyRows: [],
+  monthlySkuRows: {},
+  dailySkuRows: {},
+  structuredRows: [],
+  matrixRows: [],
+  riskRows: [],
+  comparison: {
+    currentRange: { startDate: null, endDate: null },
+    previousRange: null,
+    summaryDelta: null,
+    skuDeltas: [],
+    regionDeltas: [],
+    dailyDeltas: [],
+  },
   diagnostics: {
     files: [],
     unknown_statuses: [],
@@ -93,6 +126,10 @@ const state = {
   },
   uploadToken: null,
   inspectRequestId: 0,
+  insightView: "risk",
+  matrixMetric: "sign_rate",
+  detailFilters: {},
+  detailTitle: "订单明细",
 };
 
 function byId(id) {
@@ -111,6 +148,31 @@ function setHTML(id, value) {
   if (element) {
     element.innerHTML = value;
   }
+}
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("zh-CN");
+}
+
+function formatMetric(value, suffix = "%") {
+  if (value === null || value === undefined) return "-";
+  return `${Number(value || 0).toFixed(2).replace(/\.00$/, "")}${suffix}`;
+}
+
+function formatDelta(value, suffix = "pp") {
+  if (value === null || value === undefined) return "-";
+  const numeric = Number(value || 0);
+  const sign = numeric > 0 ? "+" : "";
+  return `${sign}${numeric.toFixed(2).replace(/\.00$/, "")}${suffix}`;
 }
 
 function normalizeReport(payload) {
@@ -133,6 +195,15 @@ function normalizeReport(payload) {
     regionRows: payload?.regionRows || [],
     monthlyRows: payload?.monthlyRows || [],
     dailyRows: payload?.dailyRows || [],
+    monthlySkuRows: payload?.monthlySkuRows || {},
+    dailySkuRows: payload?.dailySkuRows || {},
+    structuredRows: payload?.structuredRows || [],
+    matrixRows: payload?.matrixRows || [],
+    riskRows: payload?.riskRows || [],
+    comparison: {
+      ...EMPTY_DATA.comparison,
+      ...(payload?.comparison || {}),
+    },
   };
   normalized.metadata.dateBasis = normalized.metadata.dateBasis || "Created Time";
   normalized.metadata.detectedStartDate = normalized.metadata.detectedStartDate || normalized.metadata.startDate;
@@ -459,9 +530,285 @@ function dailyTable(rows) {
   return `<thead><tr>${headers.map((label) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
 }
 
+function insightTabs() {
+  return `
+    <div class="insight-tabs">
+      ${Object.entries(INSIGHT_LABELS).map(([key, label]) => `
+        <button class="insight-tab ${state.insightView === key ? "active" : ""}" type="button" data-insight-view="${key}">
+          ${label}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function rowMatchesFilters(row, filters = {}) {
+  return Object.entries(filters).every(([key, value]) => {
+    if (value === null || value === undefined || value === "") return true;
+    return String(row[key] || "") === String(value);
+  });
+}
+
+function detailRows(filters = state.detailFilters) {
+  const search = state.search.trim().toLowerCase();
+  return (DATA.structuredRows || []).filter((row) => {
+    const haystack = `${row.created_date || ""} ${row.seller_sku || ""} ${row.region || ""} ${row.bucket || ""}`.toLowerCase();
+    return rowMatchesFilters(row, filters) && (!search || haystack.includes(search));
+  });
+}
+
+function detailFilterLabel(filters = {}) {
+  const labels = [];
+  if (filters.seller_sku) labels.push(`SKU: ${filters.seller_sku}`);
+  if (filters.region) labels.push(`地区: ${filters.region}`);
+  if (filters.bucket) labels.push(`状态: ${filters.bucket}`);
+  if (filters.created_date) labels.push(`日期: ${filters.created_date}`);
+  return labels.join(" / ") || "全部订单";
+}
+
+function detailSummaryHTML(rows, filters = {}) {
+  const bucketCounts = rows.reduce((acc, row) => {
+    const bucket = row.bucket || "unknown_status";
+    acc[bucket] = (acc[bucket] || 0) + 1;
+    return acc;
+  }, {});
+  return `
+    <div class="summary-chip"><span>筛选</span><strong>${escapeHTML(detailFilterLabel(filters))}</strong></div>
+    <div class="summary-chip"><span>订单</span><strong>${formatNumber(rows.length)}</strong></div>
+    <div class="summary-chip"><span>SKU</span><strong>${formatNumber(new Set(rows.map((row) => row.seller_sku)).size)}</strong></div>
+    <div class="summary-chip"><span>地区</span><strong>${formatNumber(new Set(rows.map((row) => row.region)).size)}</strong></div>
+    <div class="summary-chip"><span>退款</span><strong>${formatNumber(bucketCounts.refund || 0)}</strong></div>
+    <div class="summary-chip"><span>发货后取消</span><strong>${formatNumber(bucketCounts.cancel_after || 0)}</strong></div>
+  `;
+}
+
+function detailTableHTML(rows) {
+  if (!rows.length) {
+    return emptyTable("无明细", "当前筛选条件下没有订单明细。");
+  }
+  const visibleRows = rows.slice(0, 300);
+  const body = visibleRows.map((row) => {
+    const unknown = row.unknown_status || {};
+    const unknownText = [unknown.order_substatus, unknown.cancel_type].filter(Boolean).join(" / ");
+    return `
+      <tr>
+        <td>${escapeHTML(row.created_date || "")}</td>
+        <td><strong>${escapeHTML(row.seller_sku || "")}</strong></td>
+        <td>${escapeHTML(row.region || "")}</td>
+        <td>${escapeHTML(row.bucket || "")}</td>
+        <td>${escapeHTML(row.file || "")}</td>
+        <td>${escapeHTML(unknownText || "-")}</td>
+      </tr>
+    `;
+  }).join("");
+  const more = rows.length > visibleRows.length
+    ? `<tr><td colspan="6" class="empty-cell">仅显示前 ${visibleRows.length} 条，共 ${rows.length} 条</td></tr>`
+    : "";
+  return `
+    <thead><tr><th>日期</th><th>SKU</th><th>地区</th><th>状态桶</th><th>文件</th><th>未知状态文本</th></tr></thead>
+    <tbody>${body}${more}</tbody>
+  `;
+}
+
+function openDetailDrawer(filters = {}, title = "订单明细") {
+  state.detailFilters = { ...filters };
+  state.detailTitle = title;
+  renderDetailDrawer();
+  document.getElementById("detailDrawer").classList.add("open");
+  document.getElementById("detailDrawer").setAttribute("aria-hidden", "false");
+}
+
+function closeDetailDrawer() {
+  document.getElementById("detailDrawer").classList.remove("open");
+  document.getElementById("detailDrawer").setAttribute("aria-hidden", "true");
+}
+
+function renderDetailDrawer() {
+  const rows = detailRows(state.detailFilters);
+  setText("detailTitle", state.detailTitle || "订单明细");
+  setHTML("detailSummary", detailSummaryHTML(rows, state.detailFilters));
+  setHTML("detailTable", detailTableHTML(rows));
+}
+
+function riskViewHTML() {
+  const rows = (DATA.riskRows || []).slice(0, 20);
+  if (!rows.length) {
+    return `<div class="empty-insight">暂无风险项。低样本项不会进入风险榜。</div>`;
+  }
+  return `
+    <div class="risk-layout">
+      <div class="risk-list">
+        ${rows.map((row, index) => `
+          <button class="risk-card" type="button" data-action="detail-risk" data-index="${index}">
+            <span class="risk-score">${formatMetric(row.risk_score, "")}</span>
+            <span class="risk-copy">
+              <strong>${escapeHTML(row.label)}</strong>
+              <em>${escapeHTML(row.reason)}</em>
+            </span>
+            <span class="risk-meta">${escapeHTML(row.type)} · ${formatNumber(row.total)} 单 · ${formatDelta(row.compare_delta)}</span>
+          </button>
+        `).join("")}
+      </div>
+      <div class="insight-note">
+        <p class="section-kicker">Priority</p>
+        <h3>点击风险项查看订单明细</h3>
+        <p class="muted">风险分来自低签收率、高退款率、高发货后取消率和上一周期变化，低于 ${RISK_MIN_TOTAL || 5} 单的样本不会进入榜单。</p>
+      </div>
+    </div>
+  `;
+}
+
+function matrixRowsForView() {
+  const search = state.search.trim().toLowerCase();
+  const rows = (DATA.matrixRows || []).filter((row) => {
+    const haystack = `${row.seller_sku || ""} ${row.region || ""}`.toLowerCase();
+    return !search || haystack.includes(search);
+  });
+  const skuTotals = new Map();
+  const regionTotals = new Map();
+  rows.forEach((row) => {
+    skuTotals.set(row.seller_sku, (skuTotals.get(row.seller_sku) || 0) + Number(row.total || 0));
+    regionTotals.set(row.region, (regionTotals.get(row.region) || 0) + Number(row.total || 0));
+  });
+  const topSkus = [...skuTotals.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hans-u-kn-true")).slice(0, search ? 60 : 30).map(([key]) => key);
+  const topRegions = [...regionTotals.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hans-u-kn-true")).slice(0, search ? 24 : 12).map(([key]) => key);
+  const byCell = new Map(rows.map((row) => [`${row.seller_sku}::${row.region}`, row]));
+  return { topSkus, topRegions, byCell };
+}
+
+function matrixCellStyle(value, metric) {
+  const max = metric === "total" ? Math.max(1, ...DATA.matrixRows.map((row) => Number(row.total || 0))) : 100;
+  const normalized = Math.max(0, Math.min(1, Number(value || 0) / max));
+  const intensity = metric === "sign_rate" ? normalized : 1 - normalized;
+  const hue = metric === "sign_rate" ? "62, 99, 221" : "198, 42, 47";
+  const alpha = 0.08 + (metric === "sign_rate" ? normalized : 1 - intensity) * 0.42;
+  return `background: rgba(${hue}, ${alpha.toFixed(2)});`;
+}
+
+function matrixViewHTML() {
+  const metric = MATRIX_METRICS[state.matrixMetric] || MATRIX_METRICS.sign_rate;
+  const { topSkus, topRegions, byCell } = matrixRowsForView();
+  if (!topSkus.length || !topRegions.length) {
+    return `<div class="empty-insight">暂无地区矩阵数据。需要上传包含地区字段的订单表。</div>`;
+  }
+  return `
+    <div class="matrix-toolbar">
+      ${Object.entries(MATRIX_METRICS).map(([key, item]) => `
+        <button class="metric-chip ${state.matrixMetric === key ? "active" : ""}" type="button" data-matrix-metric="${key}">
+          ${item.label}
+        </button>
+      `).join("")}
+    </div>
+    <div class="matrix-wrap">
+      <table class="matrix-table">
+        <thead>
+          <tr><th>SKU / 地区</th>${topRegions.map((region) => `<th>${escapeHTML(region || "空地区")}</th>`).join("")}</tr>
+        </thead>
+        <tbody>
+          ${topSkus.map((sku) => `
+            <tr>
+              <th>${escapeHTML(sku)}</th>
+              ${topRegions.map((region) => {
+                const row = byCell.get(`${sku}::${region}`);
+                if (!row) return `<td class="matrix-empty">-</td>`;
+                const value = row[state.matrixMetric] || 0;
+                return `
+                  <td>
+                    <button class="matrix-cell" type="button" style="${matrixCellStyle(value, state.matrixMetric)}" data-action="detail-cell" data-sku="${escapeHTML(sku)}" data-region="${escapeHTML(region)}">
+                      <strong>${formatMetric(value, metric.suffix)}</strong>
+                      <span>${formatNumber(row.total)} 单</span>
+                    </button>
+                  </td>
+                `;
+              }).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function comparisonCard(label, value, delta, suffix = "pp") {
+  const tone = Number(delta || 0) < 0 ? "bad" : "good";
+  return `<article class="compare-card"><span>${label}</span><strong>${value}</strong><em class="${tone}">${formatDelta(delta, suffix)}</em></article>`;
+}
+
+function comparisonRows(rows, title, reverse = false) {
+  const sorted = [...rows]
+    .filter((row) => row.sign_delta !== null && row.sign_delta !== undefined)
+    .sort((a, b) => reverse ? b.sign_delta - a.sign_delta : a.sign_delta - b.sign_delta)
+    .slice(0, 10);
+  return `
+    <div class="comparison-list">
+      <h3>${title}</h3>
+      ${sorted.length ? sorted.map((row) => `
+        <button class="comparison-row" type="button" data-action="detail-sku" data-sku="${escapeHTML(row.seller_sku || "")}">
+          <strong>${escapeHTML(row.seller_sku || "")}</strong>
+          <span>${formatNumber(row.total)} 单</span>
+          <em>${formatDelta(row.sign_delta)}</em>
+        </button>
+      `).join("") : `<p class="muted">暂无可比 SKU。</p>`}
+    </div>
+  `;
+}
+
+function comparisonViewHTML() {
+  const comparison = DATA.comparison || {};
+  const summary = comparison.summaryDelta;
+  if (!summary) {
+    return `<div class="empty-insight">无上一周期可比数据。当前周期：${escapeHTML(formatRange(comparison.currentRange?.startDate, comparison.currentRange?.endDate))}</div>`;
+  }
+  return `
+    <div class="comparison-head">
+      <span>当前 ${escapeHTML(formatRange(comparison.currentRange?.startDate, comparison.currentRange?.endDate))}</span>
+      <span>上一周期 ${escapeHTML(formatRange(comparison.previousRange?.startDate, comparison.previousRange?.endDate))}</span>
+    </div>
+    <div class="compare-grid">
+      ${comparisonCard("订单数", formatNumber(summary.total), summary.total_delta, "")}
+      ${comparisonCard("签收率", formatMetric(summary.sign_rate), summary.sign_delta)}
+      ${comparisonCard("退款率", formatMetric(summary.refund_rate), summary.refund_delta)}
+      ${comparisonCard("发货后取消率", formatMetric(summary.cancel_after_rate), summary.cancel_after_delta)}
+    </div>
+    <div class="comparison-columns">
+      ${comparisonRows(comparison.skuDeltas || [], "恶化最大 SKU")}
+      ${comparisonRows(comparison.skuDeltas || [], "改善最大 SKU", true)}
+    </div>
+  `;
+}
+
+function detailsViewHTML() {
+  const rows = detailRows({});
+  return `
+    <div class="inline-detail-summary">${detailSummaryHTML(rows, {})}</div>
+    <div class="table-wrap inline-detail-table"><table>${detailTableHTML(rows)}</table></div>
+  `;
+}
+
+function renderInsights() {
+  const body = {
+    risk: riskViewHTML,
+    matrix: matrixViewHTML,
+    comparison: comparisonViewHTML,
+    details: detailsViewHTML,
+  }[state.insightView]();
+  setHTML("insightStage", `${insightTabs()}<div class="insight-body">${body}</div>`);
+}
+
 function renderTable() {
   renderToolbarContext();
   document.getElementById("tableTitle").textContent = VIEW_LABELS[state.view] || "SKU 汇总";
+  document.getElementById("insightStage").hidden = state.view !== "insights";
+  document.getElementById("tableStage").hidden = state.view === "insights";
+
+  if (state.view === "insights") {
+    if (!hasData()) {
+      setHTML("insightStage", `<div class="empty-insight">上传订单表格并确认日期范围后，这里会显示洞察工作台。</div>`);
+      return;
+    }
+    renderInsights();
+    return;
+  }
 
   if (!hasData()) {
     document.getElementById("dataTable").innerHTML = emptyTable("等待分析", "上传订单表格并确认日期范围后，这里会显示分析结果。");
@@ -540,6 +887,9 @@ function renderAll() {
   renderTable();
   renderDatePanel();
   setDownloadsEnabled(hasData());
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.view === state.view);
+  });
 }
 
 function resetInspection() {
@@ -654,11 +1004,52 @@ function bindEvents() {
   document.getElementById("searchInput").addEventListener("input", (event) => {
     state.search = event.target.value;
     renderTable();
+    if (document.getElementById("detailDrawer").getAttribute("aria-hidden") !== "true") {
+      renderDetailDrawer();
+    }
   });
 
   document.getElementById("sortSelect").addEventListener("change", (event) => {
     state.sort = event.target.value === "sku-asc" ? "dimension-asc" : event.target.value;
     renderTable();
+  });
+
+  document.getElementById("insightStage").addEventListener("click", (event) => {
+    const insightButton = event.target.closest("[data-insight-view]");
+    if (insightButton) {
+      state.insightView = insightButton.dataset.insightView;
+      renderInsights();
+      return;
+    }
+
+    const metricButton = event.target.closest("[data-matrix-metric]");
+    if (metricButton) {
+      state.matrixMetric = metricButton.dataset.matrixMetric;
+      renderInsights();
+      return;
+    }
+
+    const detailButton = event.target.closest("[data-action]");
+    if (!detailButton) return;
+    const action = detailButton.dataset.action;
+    if (action === "detail-risk") {
+      const risk = (DATA.riskRows || [])[Number(detailButton.dataset.index)];
+      if (risk) openDetailDrawer(risk.filters || {}, risk.label || "风险订单明细");
+    } else if (action === "detail-cell") {
+      openDetailDrawer(
+        { seller_sku: detailButton.dataset.sku || "", region: detailButton.dataset.region || "" },
+        `${detailButton.dataset.sku || ""} / ${detailButton.dataset.region || "空地区"}`,
+      );
+    } else if (action === "detail-sku") {
+      openDetailDrawer({ seller_sku: detailButton.dataset.sku || "" }, `${detailButton.dataset.sku || ""} 订单明细`);
+    }
+  });
+
+  document.getElementById("detailClose").addEventListener("click", closeDetailDrawer);
+  document.getElementById("detailClear").addEventListener("click", () => {
+    state.detailFilters = {};
+    state.detailTitle = "订单明细";
+    renderDetailDrawer();
   });
 
   document.getElementById("fileInput").addEventListener("change", () => {
@@ -736,6 +1127,10 @@ function bindEvents() {
         throw new Error(payload.error || "分析失败");
       }
       DATA = normalizeReport(payload.report || EMPTY_DATA);
+      state.view = "insights";
+      state.insightView = "risk";
+      state.search = "";
+      state.sort = DEFAULT_SORT_BY_VIEW.insights;
       renderAll();
       setStatus(`分析完成，共处理 ${DATA.summary.total_orders || 0} 单`, "success");
     } catch (error) {

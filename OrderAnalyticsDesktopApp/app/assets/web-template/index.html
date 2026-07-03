@@ -103,6 +103,7 @@
                                 <button class="tab" data-view="region">地区分析</button>
                                 <button class="tab" data-view="monthly">月度总览</button>
                                 <button class="tab" data-view="daily">日度总览</button>
+                                <button class="tab" data-view="insights">洞察</button>
                             </div>
                             <div class="toolbar-controls">
                                 <input id="searchInput" type="search" placeholder="搜索 SKU / 地区">
@@ -120,7 +121,8 @@
                         <div class="panel-heading">
                             <p class="muted">上传后可直接搜索、排序，并下载最新生成的 Excel。</p>
                         </div>
-                        <div class="table-wrap">
+                        <div id="insightStage" class="insight-stage" hidden></div>
+                        <div id="tableStage" class="table-wrap">
                             <table id="dataTable"></table>
                         </div>
                     </section>
@@ -147,7 +149,26 @@
         </div>
     </div>
 
+    <aside id="detailDrawer" class="detail-drawer" aria-hidden="true">
+        <div class="drawer-panel">
+            <div class="drawer-head">
+                <div>
+                    <p class="section-kicker">Drill-down</p>
+                    <h3 id="detailTitle">订单明细</h3>
+                </div>
+                <button id="detailClose" class="icon-button" type="button" aria-label="关闭">×</button>
+            </div>
+            <div id="detailSummary" class="drawer-summary"></div>
+            <div class="drawer-actions">
+                <button id="detailClear" class="button subtle" type="button">清除筛选</button>
+            </div>
+            <div class="table-wrap drawer-table-wrap">
+                <table id="detailTable"></table>
+            </div>
+        </div>
+    </aside>
+
     <script src="./generated/report-data.js"></script>
-    <script src="./app.js?v=20260701-period-ui"></script>
+    <script src="./app.js?v=20260702-insights-ui"></script>
 </body>
 </html>

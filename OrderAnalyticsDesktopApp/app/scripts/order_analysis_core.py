@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from copy import deepcopy
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from io import BytesIO, TextIOWrapper
 import csv
@@ -42,6 +42,7 @@ METRIC_KEYS = (
 )
 UNKNOWN_LIMIT = 20
 HEADER_SCAN_LIMIT = 8
+RISK_MIN_TOTAL = 5
 BUCKET_LABELS = {
     "completed": "已完成",
     "delivered": "已送达",
@@ -560,7 +561,7 @@ def _metric_row(name: str, total: int, metrics: Dict[str, int]) -> dict:
     return {
         name: "",
         "total": total,
-        "sign_rate": round(completed_rate + delivered_rate, 2),
+        "sign_rate": round(completed_rate + delivered_rate + refund_rate, 2),
         "completed_rate": round(completed_rate, 2),
         "delivered_rate": round(delivered_rate, 2),
         "refund_rate": round(refund_rate, 2),
@@ -594,6 +595,232 @@ def build_region_rows(region_stats: Dict[str, Dict[str, Dict[str, int]]], sku_to
             row["share_rate"] = round(total / total_sku * 100, 2) if total_sku else 0.0
             rows.append(row)
     return rows
+
+
+def build_matrix_rows(region_rows: List[dict]) -> List[dict]:
+    return [
+        {
+            "seller_sku": row.get("seller_sku", ""),
+            "region": row.get("region", ""),
+            "total": row.get("total", 0),
+            "share_rate": row.get("share_rate", 0.0),
+            "sign_rate": row.get("sign_rate", 0.0),
+            "refund_rate": row.get("refund_rate", 0.0),
+            "cancel_before_rate": row.get("cancel_before_rate", 0.0),
+            "cancel_after_rate": row.get("cancel_after_rate", 0.0),
+            "in_transit_rate": row.get("in_transit_rate", 0.0),
+        }
+        for row in region_rows
+    ]
+
+
+def build_region_summary_rows(region_stats: Dict[str, Dict[str, Dict[str, int]]]) -> List[dict]:
+    region_totals: defaultdict[str, Dict[str, int]] = defaultdict(_empty_metrics)
+    for region_map in region_stats.values():
+        for region, metrics in region_map.items():
+            _merge_metrics(region_totals[region], metrics)
+
+    rows = []
+    for region, metrics in sorted(region_totals.items(), key=lambda item: (-item[1]["total"], item[0])):
+        total = metrics["total"]
+        if total == 0:
+            continue
+        row = _metric_row("region", total, metrics)
+        row["region"] = region
+        rows.append(row)
+    return rows
+
+
+def _overall_metric_row(metric_maps: Iterable[Dict[str, int]]) -> dict:
+    totals = _empty_metrics()
+    for metrics in metric_maps:
+        _merge_metrics(totals, metrics)
+    return _metric_row("overall", totals["total"], totals)
+
+
+def _row_index(rows: List[dict], key: str) -> Dict[str, dict]:
+    return {str(row.get(key, "")): row for row in rows}
+
+
+def _delta(current, previous) -> float | None:
+    if previous is None:
+        return None
+    return round(float(current or 0) - float(previous or 0), 2)
+
+
+def _metric_delta_row(current: dict, previous: dict | None) -> dict:
+    previous = previous or {}
+    return {
+        "total": int(current.get("total", 0)),
+        "previous_total": int(previous.get("total", 0) or 0),
+        "total_delta": int(current.get("total", 0)) - int(previous.get("total", 0) or 0),
+        "sign_rate": current.get("sign_rate", 0.0),
+        "sign_delta": _delta(current.get("sign_rate", 0.0), previous.get("sign_rate") if previous else None),
+        "refund_rate": current.get("refund_rate", 0.0),
+        "refund_delta": _delta(current.get("refund_rate", 0.0), previous.get("refund_rate") if previous else None),
+        "cancel_after_rate": current.get("cancel_after_rate", 0.0),
+        "cancel_after_delta": _delta(
+            current.get("cancel_after_rate", 0.0),
+            previous.get("cancel_after_rate") if previous else None,
+        ),
+    }
+
+
+def build_comparison_payload(
+    current_result: dict,
+    previous_result: dict,
+    current_start: date,
+    current_end: date,
+    previous_start: date,
+    previous_end: date,
+) -> dict:
+    if previous_result["summary"].get("total_orders", 0) <= 0:
+        return {
+            "currentRange": {"startDate": current_start.isoformat(), "endDate": current_end.isoformat()},
+            "previousRange": {"startDate": previous_start.isoformat(), "endDate": previous_end.isoformat()},
+            "summaryDelta": None,
+            "skuDeltas": [],
+            "regionDeltas": [],
+            "dailyDeltas": [],
+        }
+
+    current_overall = _overall_metric_row(current_result["sku_stats"].values())
+    previous_overall = _overall_metric_row(previous_result["sku_stats"].values())
+    previous_skus = _row_index(previous_result.get("sku_rows", []), "seller_sku")
+    previous_regions = _row_index(previous_result.get("region_summary_rows", []), "region")
+
+    sku_deltas = []
+    for row in current_result.get("sku_rows", []):
+        previous = previous_skus.get(row.get("seller_sku", ""))
+        delta_row = _metric_delta_row(row, previous)
+        delta_row["seller_sku"] = row.get("seller_sku", "")
+        sku_deltas.append(delta_row)
+    sku_deltas.sort(key=lambda row: (row["sign_delta"] if row["sign_delta"] is not None else 0, -row["total"]))
+
+    region_deltas = []
+    for row in current_result.get("region_summary_rows", []):
+        previous = previous_regions.get(row.get("region", ""))
+        delta_row = _metric_delta_row(row, previous)
+        delta_row["region"] = row.get("region", "")
+        region_deltas.append(delta_row)
+    region_deltas.sort(key=lambda row: (row["sign_delta"] if row["sign_delta"] is not None else 0, -row["total"]))
+
+    return {
+        "currentRange": {"startDate": current_start.isoformat(), "endDate": current_end.isoformat()},
+        "previousRange": {"startDate": previous_start.isoformat(), "endDate": previous_end.isoformat()},
+        "summaryDelta": _metric_delta_row(current_overall, previous_overall),
+        "skuDeltas": sku_deltas,
+        "regionDeltas": region_deltas,
+        "dailyDeltas": current_result.get("daily_rows", []),
+    }
+
+
+def _risk_candidate(kind: str, key: str, label: str, row: dict, baseline: dict, previous: dict | None, filters: dict) -> dict | None:
+    total = int(row.get("total", 0) or 0)
+    if total < RISK_MIN_TOTAL:
+        return None
+
+    sign_rate = float(row.get("sign_rate", 0.0) or 0.0)
+    refund_rate = float(row.get("refund_rate", 0.0) or 0.0)
+    cancel_after_rate = float(row.get("cancel_after_rate", 0.0) or 0.0)
+    sign_delta = _delta(sign_rate, previous.get("sign_rate") if previous else None)
+    baseline_sign = float(baseline.get("sign_rate", 0.0) or 0.0)
+    baseline_refund = float(baseline.get("refund_rate", 0.0) or 0.0)
+    baseline_cancel_after = float(baseline.get("cancel_after_rate", 0.0) or 0.0)
+
+    signals = [
+        ("sign_rate", max(0.0, baseline_sign - sign_rate) * 1.4, f"签收率 {sign_rate}%，低于整体 {round(baseline_sign - sign_rate, 2)}pp"),
+        ("refund_rate", max(0.0, refund_rate - baseline_refund) * 2.0, f"退款率 {refund_rate}%，高于整体 {round(refund_rate - baseline_refund, 2)}pp"),
+        (
+            "cancel_after_rate",
+            max(0.0, cancel_after_rate - baseline_cancel_after) * 1.8,
+            f"发货后取消率 {cancel_after_rate}%，高于整体 {round(cancel_after_rate - baseline_cancel_after, 2)}pp",
+        ),
+    ]
+    if sign_delta is not None and sign_delta < 0:
+        signals.append(("sign_delta", abs(sign_delta) * 2.2, f"签收率较上一周期下降 {abs(sign_delta)}pp"))
+
+    primary_metric, base_score, reason = max(signals, key=lambda item: item[1])
+    if base_score <= 0:
+        return None
+
+    volume_score = min(15.0, total / 20)
+    risk_score = round(min(100.0, base_score + volume_score), 1)
+    metric_value = {
+        "sign_rate": sign_rate,
+        "refund_rate": refund_rate,
+        "cancel_after_rate": cancel_after_rate,
+        "sign_delta": sign_delta,
+    }.get(primary_metric)
+    return {
+        "type": kind,
+        "key": key,
+        "label": label,
+        "total": total,
+        "risk_score": risk_score,
+        "reason": reason,
+        "primary_metric": primary_metric,
+        "metric_value": metric_value,
+        "compare_delta": sign_delta,
+        "filters": filters,
+    }
+
+
+def build_risk_rows(current_result: dict, previous_result: dict) -> List[dict]:
+    baseline = _overall_metric_row(current_result["sku_stats"].values())
+    previous_skus = _row_index(previous_result.get("sku_rows", []), "seller_sku")
+    previous_regions = _row_index(previous_result.get("region_summary_rows", []), "region")
+    previous_matrix = {
+        (row.get("seller_sku", ""), row.get("region", "")): row
+        for row in previous_result.get("matrix_rows", [])
+    }
+    rows = []
+
+    for row in current_result.get("sku_rows", []):
+        seller_sku = row.get("seller_sku", "")
+        candidate = _risk_candidate(
+            "sku",
+            seller_sku,
+            seller_sku,
+            row,
+            baseline,
+            previous_skus.get(seller_sku),
+            {"seller_sku": seller_sku},
+        )
+        if candidate:
+            rows.append(candidate)
+
+    for row in current_result.get("region_summary_rows", []):
+        region = row.get("region", "")
+        candidate = _risk_candidate(
+            "region",
+            region,
+            region or "空地区",
+            row,
+            baseline,
+            previous_regions.get(region),
+            {"region": region},
+        )
+        if candidate:
+            rows.append(candidate)
+
+    for row in current_result.get("matrix_rows", []):
+        seller_sku = row.get("seller_sku", "")
+        region = row.get("region", "")
+        candidate = _risk_candidate(
+            "matrix",
+            f"{seller_sku}::{region}",
+            f"{seller_sku} / {region or '空地区'}",
+            row,
+            baseline,
+            previous_matrix.get((seller_sku, region)),
+            {"seller_sku": seller_sku, "region": region},
+        )
+        if candidate:
+            rows.append(candidate)
+
+    rows.sort(key=lambda row: (-row["risk_score"], -row["total"], row["label"]))
+    return rows[:50]
 
 
 def build_monthly_rows(monthly_stats: Dict[str, Dict[str, int]]) -> List[dict]:
@@ -841,8 +1068,8 @@ def build_daily_workbook(daily_rows: List[dict], daily_sku_rows: Dict[str, List[
 
     notes = workbook.create_sheet(title="口径说明")
     notes.append(["字段", "说明"])
-    notes.append(["签收率(%)", "已完成率 + 已送达率"])
-    notes.append(["退款率(%)", "单独展示，不计入签收率"])
+    notes.append(["签收率(%)", "已完成率 + 已送达率 + 退款率"])
+    notes.append(["退款率(%)", "单独展示，并计入签收率"])
     notes.append(["日期", "按 Created Time 的本地日期聚合"])
     notes.append(["日度SKU明细", "每一天每个 Seller SKU 一行，用于透视表或折线趋势"])
     for column_index in range(1, 3):
@@ -1075,6 +1302,7 @@ def prepare_order_cache(
             normalized_row = {
                 "file": file_label,
                 "created_date": created_date.isoformat(),
+                "month": created_date.strftime("%Y-%m"),
                 "seller_sku": seller_sku,
                 "region": region,
                 "bucket": bucket,
@@ -1124,7 +1352,7 @@ def prepare_order_cache(
     return prepared
 
 
-def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: date) -> dict:
+def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: date, include_insights: bool = True) -> dict:
     result = _init_result_container()
     result["diagnostics"]["preset"] = prepared.get("preset", "cn_en")
     result["diagnostics"]["matched_columns"] = prepared.get("matched_columns", {})
@@ -1188,6 +1416,8 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
 
     result["sku_rows"] = build_sku_rows(result["sku_stats"])
     result["region_rows"] = build_region_rows(result["region_stats"], result["sku_totals"])
+    result["region_summary_rows"] = build_region_summary_rows(result["region_stats"])
+    result["matrix_rows"] = build_matrix_rows(result["region_rows"])
     result["monthly_rows"] = build_monthly_rows(monthly_stats)
     result["monthly_sku_rows"] = build_monthly_sku_rows(monthly_sku_stats)
     result["daily_sku_rows"] = build_daily_sku_rows(daily_sku_stats)
@@ -1206,6 +1436,35 @@ def analyze_prepared_order_cache(prepared: dict, start_date: date, end_date: dat
         }
         for (order_substatus, cancel_type), count in overall_unknown.most_common(UNKNOWN_LIMIT)
     ]
+    if include_insights:
+        period_days = (end_date - start_date).days + 1
+        previous_end = start_date - timedelta(days=1)
+        previous_start = previous_end - timedelta(days=period_days - 1)
+        previous_result = analyze_prepared_order_cache(
+            prepared,
+            previous_start,
+            previous_end,
+            include_insights=False,
+        )
+        result["comparison"] = build_comparison_payload(
+            current_result=result,
+            previous_result=previous_result,
+            current_start=start_date,
+            current_end=end_date,
+            previous_start=previous_start,
+            previous_end=previous_end,
+        )
+        result["risk_rows"] = build_risk_rows(result, previous_result)
+    else:
+        result["comparison"] = {
+            "currentRange": {"startDate": start_date.isoformat(), "endDate": end_date.isoformat()},
+            "previousRange": None,
+            "summaryDelta": None,
+            "skuDeltas": [],
+            "regionDeltas": [],
+            "dailyDeltas": [],
+        }
+        result["risk_rows"] = []
     return result
 
 

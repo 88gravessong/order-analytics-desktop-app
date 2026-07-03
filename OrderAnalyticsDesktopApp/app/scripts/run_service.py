@@ -95,6 +95,19 @@ def build_empty_payload(preset: str) -> dict:
         'regionRows': [],
         'monthlyRows': [],
         'dailyRows': [],
+        'monthlySkuRows': {},
+        'dailySkuRows': {},
+        'structuredRows': [],
+        'matrixRows': [],
+        'riskRows': [],
+        'comparison': {
+            'currentRange': {'startDate': None, 'endDate': None},
+            'previousRange': None,
+            'summaryDelta': None,
+            'skuDeltas': [],
+            'regionDeltas': [],
+            'dailyDeltas': [],
+        },
         'diagnostics': {
             'files': [],
             'unknown_statuses': [],
@@ -114,6 +127,12 @@ def normalize_payload(payload: dict, preset: str) -> dict:
     normalized['regionRows'] = (payload or {}).get('regionRows', normalized['regionRows'])
     normalized['monthlyRows'] = (payload or {}).get('monthlyRows', normalized['monthlyRows'])
     normalized['dailyRows'] = (payload or {}).get('dailyRows', normalized['dailyRows'])
+    normalized['monthlySkuRows'] = (payload or {}).get('monthlySkuRows', normalized['monthlySkuRows'])
+    normalized['dailySkuRows'] = (payload or {}).get('dailySkuRows', normalized['dailySkuRows'])
+    normalized['structuredRows'] = (payload or {}).get('structuredRows', normalized['structuredRows'])
+    normalized['matrixRows'] = (payload or {}).get('matrixRows', normalized['matrixRows'])
+    normalized['riskRows'] = (payload or {}).get('riskRows', normalized['riskRows'])
+    normalized['comparison'] = (payload or {}).get('comparison', normalized['comparison'])
 
     metadata = normalized['metadata']
     metadata['dateBasis'] = metadata.get('dateBasis') or DATE_BASIS
@@ -302,6 +321,12 @@ def analyze_inputs(
         'regionRows': analysis['region_rows'],
         'monthlyRows': analysis['monthly_rows'],
         'dailyRows': analysis['daily_rows'],
+        'monthlySkuRows': analysis['monthly_sku_rows'],
+        'dailySkuRows': analysis['daily_sku_rows'],
+        'structuredRows': analysis['structured_rows'],
+        'matrixRows': analysis['matrix_rows'],
+        'riskRows': analysis['risk_rows'],
+        'comparison': analysis['comparison'],
         'diagnostics': analysis['diagnostics'],
     }
     payload = normalize_payload(payload, preset)

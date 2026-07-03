@@ -667,6 +667,330 @@ select {
     padding: 0 12px 12px;
 }
 
+.insight-stage {
+    padding: 0 18px 18px;
+}
+
+.insight-tabs,
+.matrix-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 14px;
+}
+
+.insight-tab,
+.metric-chip,
+.icon-button {
+    border: 1px solid var(--slate-a6);
+    background: var(--slate-1);
+    color: var(--ink-soft);
+    cursor: pointer;
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    font-weight: 700;
+}
+
+.insight-tab,
+.metric-chip {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 0.84rem;
+}
+
+.insight-tab.active,
+.metric-chip.active {
+    color: white;
+    background: var(--accent);
+    border-color: transparent;
+}
+
+.insight-body {
+    min-height: 360px;
+}
+
+.empty-insight {
+    padding: 54px 16px;
+    text-align: center;
+    color: var(--ink-muted);
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    border: 1px dashed var(--slate-a6);
+    background: var(--slate-1);
+}
+
+.risk-layout,
+.comparison-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+    gap: 16px;
+}
+
+.risk-list,
+.comparison-list {
+    display: grid;
+    gap: 10px;
+    align-content: start;
+}
+
+.risk-card,
+.comparison-row {
+    width: 100%;
+    border: 1px solid var(--slate-a5);
+    background: var(--slate-1);
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left;
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+.risk-card {
+    display: grid;
+    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 10px 14px;
+    padding: 12px;
+}
+
+.risk-score {
+    grid-row: span 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 58px;
+    border-radius: 8px;
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-size: 1.3rem;
+    font-weight: 800;
+}
+
+.risk-copy {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.risk-copy strong,
+.comparison-row strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.risk-copy em,
+.risk-meta,
+.comparison-row span,
+.comparison-row em {
+    color: var(--ink-muted);
+    font-style: normal;
+}
+
+.risk-meta {
+    font-size: 0.82rem;
+}
+
+.insight-note,
+.comparison-list,
+.compare-card {
+    padding: 16px;
+    border: 1px solid var(--slate-a5);
+    background: var(--slate-1);
+}
+
+.insight-note h3,
+.comparison-list h3 {
+    margin: 0 0 10px;
+    font-size: 1.05rem;
+}
+
+.matrix-wrap {
+    overflow: auto;
+    max-height: 62vh;
+    border: 1px solid var(--slate-a5);
+    background: var(--slate-1);
+}
+
+.matrix-table {
+    min-width: 980px;
+}
+
+.matrix-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.matrix-table tbody th {
+    left: 0;
+    z-index: 1;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: var(--slate-2);
+}
+
+.matrix-table td {
+    padding: 4px;
+}
+
+.matrix-cell {
+    display: grid;
+    gap: 2px;
+    width: 100%;
+    min-width: 88px;
+    min-height: 52px;
+    padding: 7px 8px;
+    border: 1px solid transparent;
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left;
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+.matrix-cell strong {
+    font-size: 0.95rem;
+}
+
+.matrix-cell span,
+.matrix-empty {
+    color: var(--ink-muted);
+    font-size: 0.78rem;
+}
+
+.comparison-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    color: var(--ink-muted);
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+.compare-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.compare-card {
+    display: grid;
+    gap: 6px;
+}
+
+.compare-card span,
+.summary-chip span {
+    color: var(--ink-muted);
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.compare-card strong {
+    font-size: 1.45rem;
+    line-height: 1.1;
+}
+
+.compare-card em.good,
+.comparison-row em {
+    color: var(--success);
+    font-style: normal;
+    font-weight: 700;
+}
+
+.compare-card em.bad {
+    color: var(--danger);
+    font-style: normal;
+    font-weight: 700;
+}
+
+.comparison-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 12px;
+}
+
+.inline-detail-summary,
+.drawer-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.summary-chip {
+    display: grid;
+    gap: 3px;
+    min-width: 112px;
+    padding: 9px 11px;
+    border: 1px solid var(--slate-a5);
+    background: var(--slate-1);
+}
+
+.summary-chip strong {
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+.inline-detail-table {
+    margin-top: 12px;
+    padding: 0;
+}
+
+.detail-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: none;
+    justify-content: flex-end;
+    background: rgba(28, 32, 36, 0.24);
+}
+
+.detail-drawer.open {
+    display: flex;
+}
+
+.drawer-panel {
+    width: min(920px, 100vw);
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 18px;
+    background: var(--paper);
+    border-left: 1px solid var(--slate-a6);
+    box-shadow: var(--shadow);
+}
+
+.drawer-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: start;
+}
+
+.drawer-head h3 {
+    margin: 0;
+}
+
+.icon-button {
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    font-size: 1.2rem;
+}
+
+.drawer-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.drawer-table-wrap {
+    max-height: none;
+    padding: 0;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -802,8 +1126,14 @@ select:focus,
 
 @media (max-width: 1180px) {
     .hero,
-    .workspace-shell {
+    .workspace-shell,
+    .risk-layout,
+    .comparison-columns {
         grid-template-columns: 1fr;
+    }
+
+    .compare-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .upload-row {
@@ -855,5 +1185,15 @@ select:focus,
     .file-picker {
         grid-template-columns: 1fr;
         align-items: start;
+    }
+
+    .compare-grid,
+    .comparison-row,
+    .risk-card {
+        grid-template-columns: 1fr;
+    }
+
+    .drawer-panel {
+        width: 100vw;
     }
 }

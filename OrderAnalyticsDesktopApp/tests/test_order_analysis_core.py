@@ -67,6 +67,58 @@ class CountryRegionFallbackTests(unittest.TestCase):
         self.assertEqual([row["month"] for row in analysis["monthly_rows"]], ["2026-06"])
         self.assertEqual([row["date"] for row in analysis["daily_rows"]], ["2026-06-22", "2026-06-23"])
 
+    def test_insight_payload_exposes_matrix_risk_comparison_and_filtered_details(self):
+        rows = [
+            "Order ID,Order Substatus,Cancelation/Return Type,Seller SKU,Created Time,Shipped Time,State",
+        ]
+        order_id = 1
+        for day in range(1, 8):
+            rows.append(f"{order_id},已完成,,RISK-1,{day:02d}/06/2026 09:00:00,01/06/2026 10:00:00,North")
+            order_id += 1
+        for day in range(8, 13):
+            rows.append(f"{order_id},,Return/Refund,RISK-1,{day:02d}/06/2026 09:00:00,08/06/2026 10:00:00,North")
+            order_id += 1
+        for day in range(13, 15):
+            rows.append(f"{order_id},已取消,,RISK-1,{day:02d}/06/2026 09:00:00,08/06/2026 10:00:00,North")
+            order_id += 1
+        for day in range(8, 12):
+            rows.append(f"{order_id},,Return/Refund,LOW-1,{day:02d}/06/2026 09:00:00,08/06/2026 10:00:00,South")
+            order_id += 1
+        csv_bytes = ("\n".join(rows) + "\n").encode("utf-8-sig")
+        stream = BytesIO(csv_bytes)
+        stream.name = "insight-orders.csv"
+
+        prepared = prepare_order_cache([stream], require_region=True)
+        analysis = analyze_prepared_order_cache(prepared, date(2026, 6, 8), date(2026, 6, 14))
+
+        self.assertEqual(len(analysis["structured_rows"]), 11)
+        self.assertTrue(all("2026-06-08" <= row["created_date"] <= "2026-06-14" for row in analysis["structured_rows"]))
+        self.assertEqual(len(analysis["matrix_rows"]), len(analysis["region_rows"]))
+        for matrix_row, region_row in zip(analysis["matrix_rows"], analysis["region_rows"]):
+            for key in (
+                "seller_sku",
+                "region",
+                "total",
+                "share_rate",
+                "sign_rate",
+                "refund_rate",
+                "cancel_before_rate",
+                "cancel_after_rate",
+                "in_transit_rate",
+            ):
+                self.assertEqual(matrix_row[key], region_row[key])
+        self.assertEqual(analysis["comparison"]["previousRange"], {"startDate": "2026-06-01", "endDate": "2026-06-07"})
+        self.assertEqual(analysis["comparison"]["summaryDelta"]["total"], 11)
+        self.assertLess(analysis["comparison"]["summaryDelta"]["sign_delta"], 0)
+
+        risk_keys = {row["key"] for row in analysis["risk_rows"]}
+        self.assertIn("RISK-1", risk_keys)
+        self.assertNotIn("LOW-1", risk_keys)
+
+        risk_sku = next(row for row in analysis["sku_rows"] if row["seller_sku"] == "RISK-1")
+        self.assertEqual(risk_sku["refund_rate"], 71.43)
+        self.assertEqual(risk_sku["sign_rate"], 71.43)
+
 
 if __name__ == "__main__":
     unittest.main()
