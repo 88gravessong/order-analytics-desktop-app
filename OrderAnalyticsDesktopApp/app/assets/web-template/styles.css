@@ -1239,6 +1239,29 @@ select {
     font-family: "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
+.table-detail-link,
+.bucket-detail-link {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    text-align: left;
+}
+
+.table-detail-link:hover,
+.bucket-detail-link:hover {
+    color: var(--indigo-9);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.bucket-detail-link {
+    font-weight: 700;
+}
+
 .inline-detail-table {
     margin-top: 12px;
     padding: 0;
@@ -1261,7 +1284,7 @@ select {
     width: min(920px, 100vw);
     height: 100vh;
     display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
     gap: 12px;
     padding: 18px;
     background: var(--paper);
@@ -1290,6 +1313,62 @@ select {
 .drawer-actions {
     display: flex;
     justify-content: flex-end;
+}
+
+.drawer-filters {
+    min-height: 0;
+}
+
+.drawer-filter-group {
+    display: grid;
+    gap: 8px;
+}
+
+.drawer-filter-label {
+    color: var(--ink-muted);
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.drawer-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.detail-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border: 1px solid var(--slate-a6);
+    border-radius: 999px;
+    background: var(--panel-strong);
+    color: var(--ink);
+    cursor: pointer;
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    font-weight: 700;
+}
+
+.detail-filter-chip strong {
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.detail-filter-chip:hover {
+    border-color: var(--indigo-a7);
+}
+
+.detail-filter-chip.active {
+    border-color: var(--indigo-9);
+    background: var(--indigo-9);
+    color: white;
+}
+
+.detail-filter-chip.active strong {
+    color: rgba(255, 255, 255, 0.82);
 }
 
 .drawer-table-wrap {

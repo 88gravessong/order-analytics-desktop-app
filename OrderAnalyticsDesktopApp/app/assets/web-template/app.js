@@ -59,6 +59,26 @@ const INSIGHT_LABELS = {
   details: "明细",
 };
 
+const BUCKET_LABELS = {
+  completed: "已完成",
+  delivered: "已送达",
+  refund: "退款",
+  cancel_before: "发货前取消",
+  cancel_after: "发货后取消",
+  in_transit: "仍在途",
+  unknown_status: "未知状态",
+};
+
+const DETAIL_BUCKET_ORDER = [
+  "completed",
+  "delivered",
+  "refund",
+  "cancel_before",
+  "cancel_after",
+  "in_transit",
+  "unknown_status",
+];
+
 const MATRIX_METRICS = {
   sign_rate: { label: "签收率", suffix: "%", reverse: false },
   refund_rate: { label: "退款率", suffix: "%", reverse: true },
@@ -225,6 +245,10 @@ function readableReason(value) {
     .replace(/高于整体 ([\d.]+)pp/g, "比整体高 $1 个百分点")
     .replace(/较上一周期下降 ([\d.]+)pp/g, "比上一周期低 $1 个百分点")
     .replace(/([\d.]+)pp/g, "$1 个百分点");
+}
+
+function bucketLabel(value) {
+  return BUCKET_LABELS[value] || value || "未知状态";
 }
 
 function normalizeReport(payload) {
@@ -605,7 +629,11 @@ function skuTable(rows) {
   const body = rows.map((row, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td><strong>${row.seller_sku}</strong></td>
+      <td>
+        <button class="table-detail-link" type="button" data-action="table-detail" data-sku="${escapeHTML(row.seller_sku || "")}">
+          ${escapeHTML(row.seller_sku || "")}
+        </button>
+      </td>
       <td>${row.total}</td>
       <td><span class="pill ${metricClass(row.sign_rate)}">${row.sign_rate}%</span></td>
       <td>${row.completed_rate}%</td>
@@ -625,8 +653,12 @@ function regionTable(rows) {
   const body = rows.map((row, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td><strong>${row.seller_sku}</strong></td>
-      <td>${row.region}</td>
+      <td>
+        <button class="table-detail-link" type="button" data-action="table-detail" data-sku="${escapeHTML(row.seller_sku || "")}" data-region="${escapeHTML(row.region || "")}">
+          ${escapeHTML(row.seller_sku || "")}
+        </button>
+      </td>
+      <td>${escapeHTML(row.region || "")}</td>
       <td>${row.total}</td>
       <td>${row.share_rate}%</td>
       <td><span class="pill ${metricClass(row.sign_rate)}">${row.sign_rate}%</span></td>
@@ -958,17 +990,27 @@ function detailFilterLabel(filters = {}) {
   const labels = [];
   if (filters.seller_sku) labels.push(`SKU: ${filters.seller_sku}`);
   if (filters.region) labels.push(`地区: ${filters.region}`);
-  if (filters.bucket) labels.push(`状态: ${filters.bucket}`);
+  if (filters.bucket) labels.push(`状态: ${bucketLabel(filters.bucket)}`);
   if (filters.created_date) labels.push(`日期: ${filters.created_date}`);
   return labels.join(" / ") || "全部订单";
 }
 
-function detailSummaryHTML(rows, filters = {}) {
-  const bucketCounts = rows.reduce((acc, row) => {
+function filtersWithoutBucket(filters = {}) {
+  const next = { ...filters };
+  delete next.bucket;
+  return next;
+}
+
+function detailBucketCounts(rows) {
+  return rows.reduce((acc, row) => {
     const bucket = row.bucket || "unknown_status";
     acc[bucket] = (acc[bucket] || 0) + 1;
     return acc;
   }, {});
+}
+
+function detailSummaryHTML(rows, filters = {}) {
+  const bucketCounts = detailBucketCounts(rows);
   return `
     <div class="summary-chip"><span>筛选</span><strong>${escapeHTML(detailFilterLabel(filters))}</strong></div>
     <div class="summary-chip"><span>订单</span><strong>${formatNumber(rows.length)}</strong></div>
@@ -976,6 +1018,33 @@ function detailSummaryHTML(rows, filters = {}) {
     <div class="summary-chip"><span>地区</span><strong>${formatNumber(new Set(rows.map((row) => row.region)).size)}</strong></div>
     <div class="summary-chip"><span>退款</span><strong>${formatNumber(bucketCounts.refund || 0)}</strong></div>
     <div class="summary-chip"><span>发货后取消</span><strong>${formatNumber(bucketCounts.cancel_after || 0)}</strong></div>
+  `;
+}
+
+function detailFilterPanelHTML(filters = {}) {
+  const baseRows = detailRows(filtersWithoutBucket(filters));
+  const counts = detailBucketCounts(baseRows);
+  const activeBucket = filters.bucket || "";
+  const bucketButtons = DETAIL_BUCKET_ORDER
+    .filter((bucket) => counts[bucket] || activeBucket === bucket)
+    .map((bucket) => `
+      <button class="detail-filter-chip ${activeBucket === bucket ? "active" : ""}" type="button" data-detail-bucket="${escapeHTML(bucket)}">
+        <span>${escapeHTML(bucketLabel(bucket))}</span>
+        <strong>${formatNumber(counts[bucket] || 0)}</strong>
+      </button>
+    `).join("");
+  if (!baseRows.length) return "";
+  return `
+    <div class="drawer-filter-group" aria-label="状态筛选">
+      <span class="drawer-filter-label">状态筛选</span>
+      <div class="drawer-filter-chips">
+        <button class="detail-filter-chip ${!activeBucket ? "active" : ""}" type="button" data-detail-bucket="">
+          <span>全部状态</span>
+          <strong>${formatNumber(baseRows.length)}</strong>
+        </button>
+        ${bucketButtons}
+      </div>
+    </div>
   `;
 }
 
@@ -993,7 +1062,11 @@ function detailTableHTML(rows) {
         <td>${escapeHTML(row.created_date || "")}</td>
         <td><strong>${escapeHTML(row.seller_sku || "")}</strong></td>
         <td>${escapeHTML(row.region || "")}</td>
-        <td>${escapeHTML(row.bucket || "")}</td>
+        <td>
+          <button class="bucket-detail-link" type="button" data-detail-bucket="${escapeHTML(row.bucket || "unknown_status")}">
+            ${escapeHTML(bucketLabel(row.bucket || "unknown_status"))}
+          </button>
+        </td>
         <td>${escapeHTML(row.file || "")}</td>
         <td>${escapeHTML(unknownText || "-")}</td>
       </tr>
@@ -1025,6 +1098,7 @@ function renderDetailDrawer() {
   const rows = detailRows(state.detailFilters);
   setText("detailTitle", state.detailTitle || "订单明细");
   setHTML("detailSummary", detailSummaryHTML(rows, state.detailFilters));
+  setHTML("detailFilterPanel", detailFilterPanelHTML(state.detailFilters));
   setHTML("detailTable", detailTableHTML(rows));
 }
 
@@ -1551,6 +1625,16 @@ function bindEvents() {
     hideChartTooltip();
   });
 
+  document.getElementById("tableStage").addEventListener("click", (event) => {
+    const detailButton = event.target.closest('[data-action="table-detail"]');
+    if (!detailButton) return;
+    const filters = {};
+    if (detailButton.dataset.sku) filters.seller_sku = detailButton.dataset.sku;
+    if (detailButton.dataset.region) filters.region = detailButton.dataset.region;
+    const titleParts = [filters.seller_sku, filters.region].filter(Boolean);
+    openDetailDrawer(filters, `${titleParts.join(" / ") || "订单"} 订单明细`);
+  });
+
   document.getElementById("insightStage").addEventListener("click", (event) => {
     const insightButton = event.target.closest("[data-insight-view]");
     if (insightButton) {
@@ -1590,6 +1674,17 @@ function bindEvents() {
   });
 
   document.getElementById("detailClose").addEventListener("click", closeDetailDrawer);
+  document.getElementById("detailDrawer").addEventListener("click", (event) => {
+    const bucketButton = event.target.closest("[data-detail-bucket]");
+    if (!bucketButton) return;
+    const bucket = bucketButton.dataset.detailBucket || "";
+    if (bucket) {
+      state.detailFilters = { ...state.detailFilters, bucket };
+    } else {
+      state.detailFilters = filtersWithoutBucket(state.detailFilters);
+    }
+    renderDetailDrawer();
+  });
   document.getElementById("detailClear").addEventListener("click", () => {
     state.detailFilters = {};
     state.detailTitle = "订单明细";

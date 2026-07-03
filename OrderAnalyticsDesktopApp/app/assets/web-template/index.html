@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>订单分析工具</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
-    <link rel="stylesheet" href="./styles.css?v=20260704-region-chart">
+    <link rel="stylesheet" href="./styles.css?v=20260704-detail-filters">
 </head>
 <body>
     <div class="page-shell">
@@ -171,6 +171,7 @@
                 <button id="detailClose" class="icon-button" type="button" aria-label="关闭">×</button>
             </div>
             <div id="detailSummary" class="drawer-summary"></div>
+            <div id="detailFilterPanel" class="drawer-filters"></div>
             <div class="drawer-actions">
                 <button id="detailClear" class="button subtle" type="button">清除筛选</button>
             </div>
@@ -181,6 +182,6 @@
     </aside>
 
     <script src="./generated/report-data.js"></script>
-    <script src="./app.js?v=20260704-region-chart"></script>
+    <script src="./app.js?v=20260704-detail-filters"></script>
 </body>
 </html>
