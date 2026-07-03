@@ -40,8 +40,16 @@ const VIEW_DIMENSION_SORT_LABELS = {
 const DATE_GRANULARITY_LABELS = {
   daily: "日总览",
   weekly: "周总览",
-  biweekly: "二周总览",
+  ten_day: "十天总览",
   monthly: "月总览",
+};
+
+const DATE_CHART_METRICS = {
+  total: { label: "订单数", unit: "单", color: "#3e63dd", kind: "count" },
+  sign_rate: { label: "签收率", unit: "%", color: "#2f9e6d", kind: "rate" },
+  refund_rate: { label: "退款率", unit: "%", color: "#d64045", kind: "rate" },
+  cancel_after_rate: { label: "发货后取消率", unit: "%", color: "#b36b00", kind: "rate" },
+  in_transit_rate: { label: "仍在途率", unit: "%", color: "#7c5cff", kind: "rate" },
 };
 
 const INSIGHT_LABELS = {
@@ -135,6 +143,7 @@ const state = {
   inspectRequestId: 0,
   insightView: "risk",
   dateGranularity: "daily",
+  dateMetrics: ["total", "sign_rate", "refund_rate", "cancel_after_rate"],
   matrixMetric: "sign_rate",
   comparisonMode: "auto",
   detailFilters: {},
@@ -494,8 +503,8 @@ function dateRowsForGranularity(granularity = state.dateGranularity) {
       label = key;
       startDate = key;
       endDate = key;
-    } else if (granularity === "weekly" || granularity === "biweekly") {
-      const windowDays = granularity === "biweekly" ? 14 : 7;
+    } else if (granularity === "weekly" || granularity === "ten_day") {
+      const windowDays = granularity === "ten_day" ? 10 : 7;
       const index = Math.floor(daysBetween(anchor, created) / windowDays);
       const start = addDays(anchor, index * windowDays);
       const rawEnd = addDays(start, windowDays - 1);
@@ -634,7 +643,7 @@ function dateAnalysisTable(rows) {
   const dimensionLabel = {
     daily: "日期",
     weekly: "周期",
-    biweekly: "周期",
+    ten_day: "周期",
     monthly: "月份",
   }[state.dateGranularity] || "日期";
   const headers = ["序号", dimensionLabel, "订单数", "SKU 数", "签收率", "已完成率", "已送达率", "退款率", "发货前取消率", "发货后取消率", "仍在途率"];
@@ -657,17 +666,6 @@ function dateAnalysisTable(rows) {
 }
 
 function chartRowsForView(rows) {
-  if (state.view === "sku") {
-    return [...rows]
-      .sort((a, b) => Number(b.total || 0) - Number(a.total || 0))
-      .slice(0, 12)
-      .map((row) => ({
-        label: row.seller_sku || "",
-        filter: row.seller_sku || "",
-        total: Number(row.total || 0),
-        rate: Number(row.sign_rate || 0),
-      }));
-  }
   if (state.view === "region") {
     const byRegion = new Map();
     rows.forEach((row) => {
@@ -684,21 +682,10 @@ function chartRowsForView(rows) {
       .slice(0, 12)
       .map((row) => ({ ...row, rate: rate(row.signed, row.total), refund_rate: rate(row.refund, row.total) }));
   }
-  if (state.view === "date") {
-    return [...rows]
-      .sort((a, b) => String(a.start_date || a.label || "").localeCompare(String(b.start_date || b.label || ""), "zh-Hans-u-kn-true"))
-      .map((row) => ({
-        label: row.label || row.date || row.month || "",
-        filter: row.label || row.date || row.month || "",
-        total: Number(row.total || 0),
-        rate: Number(row.sign_rate || 0),
-      }));
-  }
   return [];
 }
 
 function chartTitleForView() {
-  if (state.view === "sku") return "SKU 订单量分布";
   if (state.view === "region") return "地区订单量分布";
   if (state.view === "date") return `${DATE_GRANULARITY_LABELS[state.dateGranularity] || "日期"}趋势`;
   return "";
@@ -706,13 +693,13 @@ function chartTitleForView() {
 
 function chartSubtitleForView(rows) {
   if (state.view === "region") return "点击地区条形项可筛选该地区明细。";
-  if (state.view === "date") return "点击日期或周期可筛选对应区间。";
-  return "点击 SKU 条形项可筛选该 SKU。";
+  if (state.view === "date") return "各指标按自身范围缩放，悬停点位查看真实数值。";
+  return "";
 }
 
-function chartHTML(rows) {
+function regionBarChartHTML(rows) {
   const items = chartRowsForView(rows);
-  if (!items.length || state.view === "insights") return "";
+  if (!items.length) return "";
   const maxTotal = Math.max(...items.map((item) => item.total), 1);
   return `
     <section class="chart-panel">
@@ -738,6 +725,176 @@ function chartHTML(rows) {
       </div>
     </section>
   `;
+}
+
+function dateMetricValue(row, key) {
+  return Number(row[key] || 0);
+}
+
+function dateMetricText(row, key) {
+  const metric = DATE_CHART_METRICS[key];
+  const value = dateMetricValue(row, key);
+  if (!metric) return String(value);
+  return metric.kind === "count" ? `${formatNumber(value)}${metric.unit}` : formatMetric(value);
+}
+
+function dateMetricExtent(items, key) {
+  const values = items.map((row) => dateMetricValue(row, key));
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return { min: 0, max: 1 };
+  }
+  if (min === max) {
+    const padding = max === 0 ? 1 : Math.abs(max) * 0.1;
+    min -= padding;
+    max += padding;
+  } else {
+    const padding = (max - min) * 0.12;
+    min -= padding;
+    max += padding;
+  }
+  if (DATE_CHART_METRICS[key]?.kind === "rate") {
+    min = Math.max(0, min);
+    max = Math.min(100, max);
+    if (min === max) max = Math.min(100, min + 1);
+  } else {
+    min = Math.max(0, min);
+    if (min === max) max = min + 1;
+  }
+  return { min, max };
+}
+
+function dateLineChartHTML(rows) {
+  const items = [...rows].sort((a, b) => String(a.start_date || a.label || "").localeCompare(String(b.start_date || b.label || ""), "zh-Hans-u-kn-true"));
+  if (!items.length) return "";
+  const selected = state.dateMetrics.filter((key) => DATE_CHART_METRICS[key]);
+  const activeMetrics = selected.length ? selected : ["sign_rate"];
+  const width = 960;
+  const height = 320;
+  const pad = { left: 54, right: 28, top: 24, bottom: 64 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const xFor = (index) => pad.left + (items.length === 1 ? plotW / 2 : index / (items.length - 1) * plotW);
+  const extentByMetric = Object.fromEntries(activeMetrics.map((key) => [key, dateMetricExtent(items, key)]));
+  const yFor = (row, key) => {
+    const extent = extentByMetric[key];
+    const value = dateMetricValue(row, key);
+    const position = (value - extent.min) / (extent.max - extent.min || 1);
+    return pad.top + (1 - Math.max(0, Math.min(1, position))) * plotH;
+  };
+
+  return `
+    <section class="chart-panel">
+      <div class="chart-head">
+        <div>
+          <p class="section-kicker">Chart</p>
+          <h3>${escapeHTML(chartTitleForView())}</h3>
+        </div>
+        <span>${escapeHTML(chartSubtitleForView(rows))}</span>
+      </div>
+      <div class="metric-toggle-row">
+        ${Object.entries(DATE_CHART_METRICS).map(([key, metric]) => `
+          <button class="metric-chip ${activeMetrics.includes(key) ? "active" : ""}" type="button" data-date-metric="${key}">
+            ${metric.label}
+          </button>
+        `).join("")}
+      </div>
+      <svg class="chart-svg date-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="日期趋势折线图">
+        <line class="chart-axis" x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}"></line>
+        <line class="chart-axis" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}"></line>
+        ${[0.25, 0.5, 0.75].map((ratio) => `
+          <line class="chart-guide" x1="${pad.left}" y1="${pad.top + plotH * ratio}" x2="${width - pad.right}" y2="${pad.top + plotH * ratio}"></line>
+        `).join("")}
+        ${activeMetrics.map((key) => {
+          const metric = DATE_CHART_METRICS[key];
+          const points = items.map((row, index) => `${xFor(index).toFixed(1)},${yFor(row, key).toFixed(1)}`).join(" ");
+          return `
+            <polyline class="date-line" points="${points}" stroke="${metric.color}"></polyline>
+            ${items.map((row, index) => {
+              const label = row.label || row.date || row.month || "";
+              const tooltip = {
+                title: label,
+                note: "各指标按自身范围缩放，面板显示真实值。",
+                rows: activeMetrics.map((metricKey) => ({
+                  label: DATE_CHART_METRICS[metricKey].label,
+                  value: dateMetricText(row, metricKey),
+                  color: DATE_CHART_METRICS[metricKey].color,
+                })),
+              };
+              return `
+                <circle class="date-point" cx="${xFor(index).toFixed(1)}" cy="${yFor(row, key).toFixed(1)}" r="5"
+                  fill="${metric.color}" data-chart-tooltip="${escapeHTML(JSON.stringify(tooltip))}" tabindex="0"></circle>
+              `;
+            }).join("")}
+          `;
+        }).join("")}
+        ${items.map((row, index) => {
+          if (items.length > 10 && index % Math.ceil(items.length / 8) !== 0 && index !== items.length - 1) return "";
+          const label = row.label || row.date || row.month || "";
+          const anchor = index === 0 ? "start" : index === items.length - 1 ? "end" : "middle";
+          return `<text class="chart-tick-label" x="${xFor(index).toFixed(1)}" y="${height - 32}" text-anchor="${anchor}">${escapeHTML(label.replace(" ~ ", " "))}</text>`;
+        }).join("")}
+      </svg>
+      <div class="chart-legend">
+        ${activeMetrics.map((key) => `
+          <span><i style="background:${DATE_CHART_METRICS[key].color}"></i>${DATE_CHART_METRICS[key].label}</span>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderChartTooltip(target) {
+  const tooltip = document.getElementById("chartTooltip");
+  if (!tooltip || !target?.dataset.chartTooltip) return;
+  let payload;
+  try {
+    payload = JSON.parse(target.dataset.chartTooltip);
+  } catch {
+    return;
+  }
+  tooltip.innerHTML = `
+    <strong>${escapeHTML(payload.title || "")}</strong>
+    <div class="chart-tooltip-rows">
+      ${(payload.rows || []).map((row) => `
+        <span>
+          <i style="background:${escapeHTML(row.color || "#3e63dd")}"></i>
+          <em>${escapeHTML(row.label || "")}</em>
+          <b>${escapeHTML(row.value || "")}</b>
+        </span>
+      `).join("")}
+    </div>
+    ${payload.note ? `<small>${escapeHTML(payload.note)}</small>` : ""}
+  `;
+  tooltip.hidden = false;
+}
+
+function moveChartTooltip(event) {
+  const tooltip = document.getElementById("chartTooltip");
+  if (!tooltip || tooltip.hidden) return;
+  const gap = 16;
+  const rect = tooltip.getBoundingClientRect();
+  let left = event.clientX + gap;
+  let top = event.clientY + gap;
+  if (left + rect.width > window.innerWidth - 12) left = event.clientX - rect.width - gap;
+  if (top + rect.height > window.innerHeight - 12) top = event.clientY - rect.height - gap;
+  tooltip.style.left = `${Math.max(12, left)}px`;
+  tooltip.style.top = `${Math.max(12, top)}px`;
+}
+
+function hideChartTooltip() {
+  const tooltip = document.getElementById("chartTooltip");
+  if (!tooltip) return;
+  tooltip.hidden = true;
+}
+
+function chartHTML(rows) {
+  if (state.view === "insights") return "";
+  if (state.view === "sku") return "";
+  if (state.view === "date") return dateLineChartHTML(rows);
+  if (state.view === "region") return regionBarChartHTML(rows);
+  return "";
 }
 
 function insightTabs() {
@@ -1079,6 +1236,7 @@ function renderChart(rows = []) {
   const html = state.view === "insights" || !hasData() ? "" : chartHTML(rows);
   stage.hidden = !html;
   stage.innerHTML = html;
+  hideChartTooltip();
 }
 
 function renderTable() {
@@ -1312,10 +1470,55 @@ function bindEvents() {
   });
 
   document.getElementById("chartStage").addEventListener("click", (event) => {
+    const metricButton = event.target.closest("[data-date-metric]");
+    if (metricButton) {
+      const metric = metricButton.dataset.dateMetric;
+      if (!metric) return;
+      if (state.dateMetrics.includes(metric)) {
+        if (state.dateMetrics.length > 1) {
+          state.dateMetrics = state.dateMetrics.filter((key) => key !== metric);
+        }
+      } else {
+        state.dateMetrics = [...state.dateMetrics, metric];
+      }
+      renderTable();
+      return;
+    }
+
     const button = event.target.closest("[data-chart-filter]");
     if (!button) return;
     state.search = button.dataset.chartFilter || "";
     renderTable();
+  });
+
+  document.getElementById("chartStage").addEventListener("pointerover", (event) => {
+    const point = event.target.closest(".date-point[data-chart-tooltip]");
+    if (!point) return;
+    renderChartTooltip(point);
+    moveChartTooltip(event);
+  });
+
+  document.getElementById("chartStage").addEventListener("pointermove", (event) => {
+    if (!event.target.closest(".date-point[data-chart-tooltip]")) return;
+    moveChartTooltip(event);
+  });
+
+  document.getElementById("chartStage").addEventListener("pointerout", (event) => {
+    if (!event.target.closest(".date-point[data-chart-tooltip]")) return;
+    hideChartTooltip();
+  });
+
+  document.getElementById("chartStage").addEventListener("focusin", (event) => {
+    const point = event.target.closest(".date-point[data-chart-tooltip]");
+    if (!point) return;
+    const rect = point.getBoundingClientRect();
+    renderChartTooltip(point);
+    moveChartTooltip({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
+  });
+
+  document.getElementById("chartStage").addEventListener("focusout", (event) => {
+    if (!event.target.closest(".date-point[data-chart-tooltip]")) return;
+    hideChartTooltip();
   });
 
   document.getElementById("insightStage").addEventListener("click", (event) => {
