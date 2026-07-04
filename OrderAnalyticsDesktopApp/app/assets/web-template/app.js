@@ -165,6 +165,7 @@ const state = {
   insightView: "risk",
   dateGranularity: "daily",
   dateMetrics: ["total", "sign_rate", "refund_rate", "cancel_after_rate"],
+  dateChartCollapsed: false,
   matrixMetric: "sign_rate",
   comparisonMode: "auto",
   detailFilters: {},
@@ -817,26 +818,34 @@ function dateLineChartHTML(rows) {
   const items = [...rows].sort((a, b) => String(a.start_date || a.label || "").localeCompare(String(b.start_date || b.label || ""), "zh-Hans-u-kn-true"));
   if (!items.length) return "";
   const activeMetrics = activeDateMetricKeys();
+  const collapsed = state.dateChartCollapsed;
 
   return `
-    <section class="chart-panel">
+    <section class="chart-panel ${collapsed ? "collapsed" : ""}">
       <div class="chart-head">
         <div>
           <p class="section-kicker">Chart</p>
-          <h3>${escapeHTML(chartTitleForView())}</h3>
+          <div class="chart-title-row">
+            <h3>${escapeHTML(chartTitleForView())}</h3>
+            <button class="chart-collapse-toggle" type="button" data-date-chart-toggle aria-expanded="${collapsed ? "false" : "true"}">
+              ${collapsed ? "展开" : "收起"}
+            </button>
+          </div>
         </div>
         <span>${escapeHTML(chartSubtitleForView(rows))}</span>
       </div>
-      <div class="metric-toggle-row">
-        ${Object.entries(DATE_CHART_METRICS).map(([key, metric]) => `
-          <button class="metric-chip ${activeMetrics.includes(key) ? "active" : ""}" type="button" data-date-metric="${key}">
-            ${metric.label}
-          </button>
-        `).join("")}
-      </div>
-      <div class="date-chart-shell">
-        <canvas id="dateTrendCanvas" aria-label="日期趋势折线图"></canvas>
-      </div>
+      ${collapsed ? "" : `
+        <div class="metric-toggle-row">
+          ${Object.entries(DATE_CHART_METRICS).map(([key, metric]) => `
+            <button class="metric-chip ${activeMetrics.includes(key) ? "active" : ""}" type="button" data-date-metric="${key}">
+              ${metric.label}
+            </button>
+          `).join("")}
+        </div>
+        <div class="date-chart-shell">
+          <canvas id="dateTrendCanvas" aria-label="日期趋势折线图"></canvas>
+        </div>
+      `}
     </section>
   `;
 }
@@ -856,9 +865,65 @@ function destroyDateTrendChart() {
   dateTrendChart = null;
 }
 
+function getDateChartTooltip(shell) {
+  let tooltip = shell.querySelector(".date-chart-tooltip");
+  if (tooltip) return tooltip;
+  tooltip = document.createElement("div");
+  tooltip.className = "date-chart-tooltip";
+  tooltip.setAttribute("aria-hidden", "true");
+  shell.appendChild(tooltip);
+  return tooltip;
+}
+
+function renderDateChartTooltip(context, items) {
+  const tooltipModel = context.tooltip;
+  const shell = context.chart.canvas.closest(".date-chart-shell");
+  if (!shell) return;
+  const tooltip = getDateChartTooltip(shell);
+  if (!tooltipModel || tooltipModel.opacity === 0 || !tooltipModel.dataPoints?.length) {
+    tooltip.classList.remove("visible");
+    return;
+  }
+
+  const dataIndex = tooltipModel.dataPoints[0].dataIndex;
+  const row = items[dataIndex];
+  const title = tooltipModel.title?.[0] || row?.label || "";
+  const rows = tooltipModel.dataPoints.map((point) => {
+    const key = point.dataset.metricKey;
+    const color = point.dataset.borderColor || point.dataset.backgroundColor;
+    const value = row ? dateMetricText(row, key) : point.formattedValue;
+    return `<div class="date-chart-tooltip-row"><i style="background:${escapeHTML(color)}"></i><span>${escapeHTML(point.dataset.label)}</span><strong>${escapeHTML(value)}</strong></div>`;
+  }).join("");
+
+  tooltip.innerHTML = `<div class="date-chart-tooltip-title">${escapeHTML(title)}</div>${rows}`;
+  tooltip.classList.remove("below");
+  tooltip.classList.add("visible");
+
+  const margin = 10;
+  const shellRect = shell.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const chartArea = context.chart.chartArea || {};
+  const rawX = tooltipModel.caretX;
+  const rawY = tooltipModel.caretY;
+  const halfWidth = tooltipRect.width / 2;
+  const x = Math.min(
+    Math.max(rawX, halfWidth + margin),
+    Math.max(halfWidth + margin, shellRect.width - halfWidth - margin),
+  );
+  let y = rawY - tooltipRect.height - 14;
+  if (y < margin || rawY < (chartArea.top || 0) + tooltipRect.height * 0.35) {
+    y = rawY + 16;
+    tooltip.classList.add("below");
+  }
+  y = Math.min(Math.max(y, margin), Math.max(margin, shellRect.height - tooltipRect.height - margin));
+  tooltip.style.left = `${x}px`;
+  tooltip.style.top = `${y}px`;
+}
+
 function mountDateTrendChart(rows = []) {
   destroyDateTrendChart();
   if (state.view !== "date") return;
+  if (state.dateChartCollapsed) return;
   const canvas = document.getElementById("dateTrendCanvas");
   if (!canvas) return;
   const items = dateChartRows(rows);
@@ -910,6 +975,7 @@ function mountDateTrendChart(rows = []) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
+      layout: { padding: { top: 18, right: 12, bottom: 4, left: 8 } },
       plugins: {
         legend: {
           position: "bottom",
@@ -923,25 +989,9 @@ function mountDateTrendChart(rows = []) {
           },
         },
         tooltip: {
-          backgroundColor: "rgba(255, 255, 255, 0.98)",
-          borderColor: "rgba(28, 32, 36, 0.16)",
-          borderWidth: 1,
-          titleColor: "#1c2024",
-          bodyColor: "#1c2024",
-          padding: 12,
-          displayColors: true,
-          callbacks: {
-            title(context) {
-              return context?.[0]?.label || "";
-            },
-            label(context) {
-              const key = context.dataset.metricKey;
-              const row = items[context.dataIndex];
-              return `${context.dataset.label}: ${dateMetricText(row, key)}`;
-            },
-            footer() {
-              return "各指标独立缩放，面板显示真实值。";
-            },
+          enabled: false,
+          external(context) {
+            renderDateChartTooltip(context, items);
           },
         },
       },
@@ -1645,6 +1695,13 @@ function bindEvents() {
   });
 
   document.getElementById("chartStage").addEventListener("click", (event) => {
+    const chartToggle = event.target.closest("[data-date-chart-toggle]");
+    if (chartToggle) {
+      state.dateChartCollapsed = !state.dateChartCollapsed;
+      renderChart(currentRows());
+      return;
+    }
+
     const metricButton = event.target.closest("[data-date-metric]");
     if (metricButton) {
       const metric = metricButton.dataset.dateMetric;
