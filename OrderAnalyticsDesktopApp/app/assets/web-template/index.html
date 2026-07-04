@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>订单分析工具</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./styles.css?v=20260704-chartjs-copy">
 </head>
 <body>
     <div class="page-shell">
@@ -30,7 +30,7 @@
 
             <section class="command-deck">
                 <form id="uploadForm" class="upload-form">
-                    <div class="ingest-lane">
+                    <div class="upload-row">
                         <div class="field field-files">
                             <div class="file-picker">
                                 <input id="fileInput" name="files" type="file" accept=".xlsx,.csv" multiple required>
@@ -40,10 +40,6 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    <section id="datePanel" class="date-panel disabled">
-                        <p id="dateHint" class="sr-only">选择文件后自动识别日期范围。</p>
 
                         <div id="datePresetGroup" class="preset-group">
                             <button type="button" class="preset-chip active" data-date-mode="full_range">全范围</button>
@@ -53,44 +49,75 @@
                             <button type="button" class="preset-chip" data-date-mode="current_month">本月</button>
                             <button type="button" class="preset-chip" data-date-mode="custom">自定义</button>
                         </div>
+                    </div>
 
-                        <div class="date-summary-grid">
-                            <article class="date-summary-card">
-                                <span>文件全范围</span>
+                    <section id="datePanel" class="date-panel disabled">
+                        <p id="dateHint" class="sr-only">选择文件后自动识别日期范围。</p>
+
+                        <div class="date-info-bar">
+                            <span class="date-info-item">
+                                <span class="date-info-label">文件全范围</span>
                                 <strong id="detectedRangeText">等待探测</strong>
-                            </article>
-                            <article class="date-summary-card">
-                                <span>当前选择</span>
+                            </span>
+                            <span class="date-info-sep">|</span>
+                            <span class="date-info-item">
+                                <span class="date-info-label">当前选择</span>
                                 <strong id="selectedRangeText">未选择</strong>
-                            </article>
-                            <article class="date-summary-card">
-                                <span>当前模式</span>
+                            </span>
+                            <span class="date-info-sep">|</span>
+                            <span class="date-info-item">
+                                <span class="date-info-label">模式</span>
                                 <strong id="selectedModeText">全范围</strong>
-                            </article>
+                            </span>
+                            <span class="date-info-sep">|</span>
+                            <span id="statusBox" class="status-box idle">等待上传文件</span>
                         </div>
 
-                        <div class="field-row date-field-row">
-                            <div id="startDateField" class="field soft">
-                                <label for="startDateInput">开始日期</label>
-                                <input id="startDateInput" name="start_date" type="date">
+                        <div class="control-row">
+                            <div class="field-row date-field-row">
+                                <div id="startDateField" class="field soft">
+                                    <label for="startDateInput">开始</label>
+                                    <input id="startDateInput" name="start_date" type="date">
+                                </div>
+                                <div id="endDateField" class="field soft">
+                                    <label for="endDateInput">结束</label>
+                                    <input id="endDateInput" name="end_date" type="date">
+                                </div>
                             </div>
-                            <div id="endDateField" class="field soft">
-                                <label for="endDateInput">结束日期</label>
-                                <input id="endDateInput" name="end_date" type="date">
-                            </div>
+                            <button id="submitButton" class="button primary" type="submit">分析当前日期范围</button>
                         </div>
                     </section>
-
-                    <div class="actions">
-                        <button id="submitButton" class="button primary" type="submit">分析当前日期范围</button>
-                    </div>
                 </form>
-                <div id="statusBox" class="status-box idle">等待上传文件</div>
             </section>
 
-            <section class="summary-grid" id="summaryGrid"></section>
-
             <section class="workspace-shell">
+                <details class="diagnostics">
+                    <summary class="diagnostics-summary">
+                        <span>
+                            <span class="section-kicker">Diagnostics</span>
+                            <strong>诊断信息</strong>
+                        </span>
+                        <em>映射、未知状态、运行信息</em>
+                    </summary>
+                    <div class="diagnostics-grid">
+                        <div class="diagnostic-block">
+                            <p class="section-kicker">Mapping</p>
+                            <h3>映射诊断</h3>
+                            <ul id="matchedColumns" class="meta-list"></ul>
+                        </div>
+                        <div class="diagnostic-block">
+                            <p class="section-kicker">Status</p>
+                            <h3>未知状态</h3>
+                            <ul id="unknownStatuses" class="meta-list"></ul>
+                        </div>
+                        <div class="diagnostic-block">
+                            <p class="section-kicker">Runtime</p>
+                            <h3>运行信息</h3>
+                            <ul id="runMeta" class="meta-list"></ul>
+                        </div>
+                    </div>
+                </details>
+
                 <div class="workspace-main">
                     <section class="toolbar">
                         <div class="toolbar-head">
@@ -101,6 +128,8 @@
                             <div class="tab-group">
                                 <button class="tab active" data-view="sku">SKU 汇总</button>
                                 <button class="tab" data-view="region">地区分析</button>
+                                <button class="tab" data-view="date">日期分析</button>
+                                <button class="tab" data-view="insights">洞察</button>
                             </div>
                             <div class="toolbar-controls">
                                 <input id="searchInput" type="search" placeholder="搜索 SKU / 地区">
@@ -108,7 +137,7 @@
                                     <option value="total-desc">按订单数降序</option>
                                     <option value="sign-desc">按签收率降序</option>
                                     <option value="refund-desc">按退款率降序</option>
-                                    <option value="sku-asc">按 SKU 升序</option>
+                                    <option value="dimension-asc">按 SKU 升序</option>
                                 </select>
                             </div>
                         </div>
@@ -118,34 +147,42 @@
                         <div class="panel-heading">
                             <p class="muted">上传后可直接搜索、排序，并下载最新生成的 Excel。</p>
                         </div>
-                        <div class="table-wrap">
+                        <div id="dateGranularityStage" class="date-tabs" hidden></div>
+                        <div id="chartStage" class="chart-stage" hidden></div>
+                        <div id="insightStage" class="insight-stage" hidden></div>
+                        <div id="tableStage" class="table-wrap">
                             <table id="dataTable"></table>
                         </div>
                     </section>
                 </div>
 
-                <aside class="diagnostics">
-                    <div class="diagnostic-block">
-                        <p class="section-kicker">Mapping</p>
-                        <h3>映射诊断</h3>
-                        <ul id="matchedColumns" class="meta-list"></ul>
-                    </div>
-                    <div class="diagnostic-block">
-                        <p class="section-kicker">Status</p>
-                        <h3>未知状态</h3>
-                        <ul id="unknownStatuses" class="meta-list"></ul>
-                    </div>
-                    <div class="diagnostic-block">
-                        <p class="section-kicker">Runtime</p>
-                        <h3>运行信息</h3>
-                        <ul id="runMeta" class="meta-list"></ul>
-                    </div>
-                </aside>
             </section>
         </div>
     </div>
 
+    <aside id="detailDrawer" class="detail-drawer" aria-hidden="true">
+        <div class="drawer-panel">
+            <div class="drawer-head">
+                <div>
+                    <p class="section-kicker">Drill-down</p>
+                    <h3 id="detailTitle">订单明细</h3>
+                </div>
+                <button id="detailClose" class="icon-button" type="button" aria-label="关闭">×</button>
+            </div>
+            <div id="detailSummary" class="drawer-summary"></div>
+            <div id="detailFilterPanel" class="drawer-filters"></div>
+            <div class="drawer-actions">
+                <span id="detailCopyStatus" class="drawer-copy-status" aria-live="polite"></span>
+                <button id="detailClear" class="button subtle" type="button">清除筛选</button>
+            </div>
+            <div class="table-wrap drawer-table-wrap">
+                <table id="detailTable"></table>
+            </div>
+        </div>
+    </aside>
+
     <script src="./generated/report-data.js"></script>
-    <script src="./app.js?v=20260615-daily-exports"></script>
+    <script src="./vendor/chart.umd.min.js?v=4.5.1"></script>
+    <script src="./app.js?v=20260704-chartjs-copy"></script>
 </body>
 </html>

@@ -89,10 +89,29 @@ def build_empty_payload(preset: str) -> dict:
             'sku_count': 0,
             'region_count': 0,
             'month_count': 0,
+            'day_count': 0,
         },
         'skuRows': [],
         'regionRows': [],
         'monthlyRows': [],
+        'dailyRows': [],
+        'monthlySkuRows': {},
+        'dailySkuRows': {},
+        'structuredRows': [],
+        'matrixRows': [],
+        'riskRows': [],
+        'comparison': {
+            'mode': 'none',
+            'label': '暂无可比数据',
+            'currentRange': {'startDate': None, 'endDate': None},
+            'previousRange': None,
+            'summaryDelta': None,
+            'skuDeltas': [],
+            'regionDeltas': [],
+            'dailyDeltas': [],
+            'emptyReason': '当前日期范围内没有足够数据生成周期对比。',
+        },
+        'comparisonOptions': [],
         'diagnostics': {
             'files': [],
             'unknown_statuses': [],
@@ -111,6 +130,14 @@ def normalize_payload(payload: dict, preset: str) -> dict:
     normalized['skuRows'] = (payload or {}).get('skuRows', normalized['skuRows'])
     normalized['regionRows'] = (payload or {}).get('regionRows', normalized['regionRows'])
     normalized['monthlyRows'] = (payload or {}).get('monthlyRows', normalized['monthlyRows'])
+    normalized['dailyRows'] = (payload or {}).get('dailyRows', normalized['dailyRows'])
+    normalized['monthlySkuRows'] = (payload or {}).get('monthlySkuRows', normalized['monthlySkuRows'])
+    normalized['dailySkuRows'] = (payload or {}).get('dailySkuRows', normalized['dailySkuRows'])
+    normalized['structuredRows'] = (payload or {}).get('structuredRows', normalized['structuredRows'])
+    normalized['matrixRows'] = (payload or {}).get('matrixRows', normalized['matrixRows'])
+    normalized['riskRows'] = (payload or {}).get('riskRows', normalized['riskRows'])
+    normalized['comparison'] = (payload or {}).get('comparison', normalized['comparison'])
+    normalized['comparisonOptions'] = (payload or {}).get('comparisonOptions', normalized['comparisonOptions'])
 
     metadata = normalized['metadata']
     metadata['dateBasis'] = metadata.get('dateBasis') or DATE_BASIS
@@ -298,6 +325,14 @@ def analyze_inputs(
         'skuRows': analysis['sku_rows'],
         'regionRows': analysis['region_rows'],
         'monthlyRows': analysis['monthly_rows'],
+        'dailyRows': analysis['daily_rows'],
+        'monthlySkuRows': analysis['monthly_sku_rows'],
+        'dailySkuRows': analysis['daily_sku_rows'],
+        'structuredRows': analysis['structured_rows'],
+        'matrixRows': analysis['matrix_rows'],
+        'riskRows': analysis['risk_rows'],
+        'comparison': analysis['comparison'],
+        'comparisonOptions': analysis['comparison_options'],
         'diagnostics': analysis['diagnostics'],
     }
     payload = normalize_payload(payload, preset)
@@ -326,6 +361,10 @@ def create_app(workspace: Path, preset: str, mapping_path: str | None) -> Flask:
     @app.get('/favicon.svg')
     def favicon():
         return send_from_directory(TEMPLATE_DIR, 'favicon.svg')
+
+    @app.get('/vendor/<path:filename>')
+    def vendor_file(filename: str):
+        return send_from_directory(TEMPLATE_DIR / 'vendor', filename)
 
     @app.get('/generated/<path:filename>')
     def generated_file(filename: str):
