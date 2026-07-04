@@ -1237,7 +1237,7 @@ async function copyDetailOrderIds() {
     return;
   }
   try {
-    await writeTextToClipboard(ids.join("\n"));
+    await writeTextToClipboard(ids.join(";"));
     setDetailCopyStatus(`已复制 ${formatNumber(ids.length)} 个订单号`, "success");
   } catch {
     setDetailCopyStatus("复制失败，请手动选择订单号", "warn");
