@@ -165,7 +165,7 @@ const state = {
   insightView: "risk",
   dateGranularity: "daily",
   dateMetrics: ["total", "sign_rate", "refund_rate", "cancel_after_rate"],
-  dateChartCollapsed: false,
+  dateChartCollapsed: true,
   matrixMetric: "sign_rate",
   comparisonMode: "auto",
   detailFilters: {},
@@ -825,27 +825,27 @@ function dateLineChartHTML(rows) {
       <div class="chart-head">
         <div>
           <p class="section-kicker">Chart</p>
-          <div class="chart-title-row">
-            <h3>${escapeHTML(chartTitleForView())}</h3>
-            <button class="chart-collapse-toggle" type="button" data-date-chart-toggle aria-expanded="${collapsed ? "false" : "true"}">
-              ${collapsed ? "展开" : "收起"}
-            </button>
+          <h3>${escapeHTML(chartTitleForView())}</h3>
+        </div>
+        <div class="chart-head-right">
+          <span class="chart-subtitle">${escapeHTML(chartSubtitleForView(rows))}</span>
+          <button class="chart-collapse-toggle" type="button" data-date-chart-toggle aria-expanded="${collapsed ? "false" : "true"}" aria-label="${collapsed ? "展开图表" : "收起图表"}"></button>
+        </div>
+      </div>
+      <div class="chart-body-wrapper">
+        <div class="chart-body">
+          <div class="metric-toggle-row">
+            ${Object.entries(DATE_CHART_METRICS).map(([key, metric]) => `
+              <button class="metric-chip ${activeMetrics.includes(key) ? "active" : ""}" type="button" data-date-metric="${key}">
+                ${metric.label}
+              </button>
+            `).join("")}
+          </div>
+          <div class="date-chart-shell">
+            <canvas id="dateTrendCanvas" aria-label="日期趋势折线图"></canvas>
           </div>
         </div>
-        <span>${escapeHTML(chartSubtitleForView(rows))}</span>
       </div>
-      ${collapsed ? "" : `
-        <div class="metric-toggle-row">
-          ${Object.entries(DATE_CHART_METRICS).map(([key, metric]) => `
-            <button class="metric-chip ${activeMetrics.includes(key) ? "active" : ""}" type="button" data-date-metric="${key}">
-              ${metric.label}
-            </button>
-          `).join("")}
-        </div>
-        <div class="date-chart-shell">
-          <canvas id="dateTrendCanvas" aria-label="日期趋势折线图"></canvas>
-        </div>
-      `}
     </section>
   `;
 }
@@ -1698,7 +1698,17 @@ function bindEvents() {
     const chartToggle = event.target.closest("[data-date-chart-toggle]");
     if (chartToggle) {
       state.dateChartCollapsed = !state.dateChartCollapsed;
-      renderChart(currentRows());
+      const panel = chartToggle.closest(".chart-panel");
+      if (panel) {
+        panel.classList.toggle("collapsed", state.dateChartCollapsed);
+        chartToggle.setAttribute("aria-expanded", String(!state.dateChartCollapsed));
+        chartToggle.setAttribute("aria-label", state.dateChartCollapsed ? "展开图表" : "收起图表");
+        if (state.dateChartCollapsed) {
+          destroyDateTrendChart();
+        } else {
+          setTimeout(() => mountDateTrendChart(currentRows()), 380);
+        }
+      }
       return;
     }
 

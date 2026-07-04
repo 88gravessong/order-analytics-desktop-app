@@ -795,35 +795,54 @@ select {
     font-size: 1.05rem;
 }
 
-.chart-title-row {
+.chart-head-right {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0;
+}
+
+.chart-subtitle {
+    color: var(--ink-muted);
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 0.84rem;
 }
 
 .chart-collapse-toggle {
-    min-height: 28px;
-    padding: 0 10px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
     border: 1px solid var(--slate-a6);
-    border-radius: 999px;
+    border-radius: 50%;
     background: var(--slate-1);
     color: var(--ink-soft);
     cursor: pointer;
-    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-    font-size: 0.78rem;
-    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.chart-collapse-toggle::after {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-135deg);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-top: 2px;
+}
+
+.chart-panel.collapsed .chart-collapse-toggle::after {
+    transform: rotate(45deg);
 }
 
 .chart-collapse-toggle:hover {
     border-color: var(--indigo-a7);
     color: var(--accent-strong);
     background: var(--accent-soft);
-}
-
-.chart-head span {
-    color: var(--ink-muted);
-    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-    font-size: 0.84rem;
 }
 
 .chart-bars {
@@ -900,6 +919,30 @@ select {
 .chart-panel.collapsed {
     gap: 0;
     padding-bottom: 18px;
+}
+
+.chart-body-wrapper {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chart-panel.collapsed .chart-body-wrapper {
+    grid-template-rows: 0fr;
+}
+
+.chart-body {
+    overflow: hidden;
+    min-height: 0;
+    display: grid;
+    gap: 12px;
+    opacity: 1;
+    transition: opacity 0.25s ease 0.06s;
+}
+
+.chart-panel.collapsed .chart-body {
+    opacity: 0;
+    transition: opacity 0.15s ease;
 }
 
 .date-chart-shell {
