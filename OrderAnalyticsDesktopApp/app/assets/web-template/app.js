@@ -937,34 +937,76 @@ function mountDateTrendChart(rows = []) {
   }
 
   const activeMetrics = activeDateMetricKeys();
-  const scales = Object.fromEntries(activeMetrics.map((key) => {
+  const scales = Object.fromEntries(activeMetrics.map((key, idx) => {
     const extent = dateMetricExtent(items, key);
+    const isPrimary = idx === 0;
     return [`y_${key}`, {
       type: "linear",
-      display: false,
+      display: isPrimary,
+      position: "left",
       min: extent.min,
       max: extent.max,
-      grid: { display: false },
+      grid: {
+        display: isPrimary,
+        color: "rgba(28, 32, 36, 0.06)",
+        drawBorder: false,
+        drawOnChartArea: true,
+        drawTicks: false,
+      },
+      ticks: {
+        display: isPrimary,
+        color: "#90949c",
+        font: { size: 11, family: "'Segoe UI', 'Helvetica Neue', sans-serif" },
+        maxTicksLimit: 6,
+        padding: 8,
+        callback(value) {
+          const metric = DATE_CHART_METRICS[key];
+          if (metric.kind === "rate") return `${value}%`;
+          if (value >= 10000) return `${(value / 10000).toFixed(1)}w`;
+          if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+          return value;
+        },
+      },
       border: { display: false },
     }];
   }));
   const labels = items.map((row) => row.label || row.date || row.month || "");
-  const datasets = activeMetrics.map((key) => {
+
+  const colorCache = {};
+  function hexToRgba(hex, alpha) {
+    if (colorCache[hex + alpha]) return colorCache[hex + alpha];
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    colorCache[hex + alpha] = `rgba(${r},${g},${b},${alpha})`;
+    return colorCache[hex + alpha];
+  }
+
+  const datasets = activeMetrics.map((key, idx) => {
     const metric = DATE_CHART_METRICS[key];
+    const isPrimary = idx === 0;
     return {
       label: metric.label,
       metricKey: key,
       data: items.map((row) => dateMetricValue(row, key)),
       yAxisID: `y_${key}`,
       borderColor: metric.color,
-      backgroundColor: metric.color,
+      backgroundColor: hexToRgba(metric.color, isPrimary ? 0.08 : 0),
       pointBackgroundColor: metric.color,
       pointBorderColor: "#fff",
-      pointBorderWidth: 2,
-      pointRadius: 4,
-      pointHoverRadius: 6,
-      borderWidth: 3,
-      tension: 0.28,
+      pointBorderWidth: 1.5,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      pointHitRadius: 8,
+      borderWidth: 2,
+      tension: 0.35,
+      fill: isPrimary ? {
+        target: "start",
+        above: hexToRgba(metric.color, 0.07),
+        below: hexToRgba(metric.color, 0.02),
+      } : false,
+      borderCapStyle: "round",
+      borderJoinStyle: "round",
     };
   });
 
@@ -974,18 +1016,20 @@ function mountDateTrendChart(rows = []) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       interaction: { mode: "index", intersect: false },
-      layout: { padding: { top: 18, right: 12, bottom: 4, left: 8 } },
+      layout: { padding: { top: 8, right: 16, bottom: 4, left: 8 } },
       plugins: {
         legend: {
           position: "bottom",
           align: "start",
           labels: {
             usePointStyle: true,
-            boxWidth: 8,
-            boxHeight: 8,
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 18,
             color: "#60646c",
-            font: { family: "Segoe UI, Helvetica Neue, sans-serif", size: 12 },
+            font: { family: "'Segoe UI', 'Helvetica Neue', sans-serif", size: 12 },
           },
         },
         tooltip: {
@@ -999,10 +1043,12 @@ function mountDateTrendChart(rows = []) {
         x: {
           grid: { display: false },
           ticks: {
-            color: "#60646c",
+            color: "#90949c",
             autoSkip: true,
-            maxTicksLimit: 7,
+            maxTicksLimit: 8,
             maxRotation: 0,
+            padding: 6,
+            font: { size: 11 },
             callback(value) {
               return chartTickLabel(this.getLabelForValue(value));
             },
