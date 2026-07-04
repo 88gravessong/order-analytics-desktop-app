@@ -1563,13 +1563,6 @@ function renderAll() {
   });
 }
 
-function scrollToWorkspace() {
-  const target = document.getElementById("workspaceMain");
-  if (target) {
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-}
-
 function resetInspection() {
   state.inspection = { ...EMPTY_INSPECTION };
   state.dateMode = "full_range";
@@ -1676,7 +1669,6 @@ function bindEvents() {
       }
       document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab === button));
       renderTable();
-      scrollToWorkspace();
     });
   });
 
@@ -1896,7 +1888,6 @@ function bindEvents() {
       state.search = "";
       state.sort = DEFAULT_SORT_BY_VIEW[state.view] || "total-desc";
       renderAll();
-      scrollToWorkspace();
       setStatus(`分析完成，共处理 ${DATA.summary.total_orders || 0} 单`, "success");
     } catch (error) {
       setStatus(error.message || "分析失败", "error");
@@ -1910,7 +1901,6 @@ function bindEvents() {
 async function loadInitialReport() {
   if (hasData()) {
     renderAll();
-    scrollToWorkspace();
     setStatus(`已加载最近一次结果，共 ${DATA.summary.total_orders || 0} 单`, "success");
     return;
   }
@@ -1922,7 +1912,6 @@ async function loadInitialReport() {
     }
     DATA = normalizeReport(await response.json());
     renderAll();
-    scrollToWorkspace();
     if (hasData()) {
       setStatus(`已加载最近一次结果，共 ${DATA.summary.total_orders || 0} 单`, "success");
     } else {
