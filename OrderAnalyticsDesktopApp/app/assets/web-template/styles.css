@@ -1068,6 +1068,7 @@ select {
 .comparison-row {
     width: 100%;
     border: 1px solid var(--slate-a5);
+    border-radius: 12px;
     background: var(--slate-1);
     color: var(--ink);
     cursor: pointer;
