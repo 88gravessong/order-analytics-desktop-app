@@ -45,11 +45,11 @@ const DATE_GRANULARITY_LABELS = {
 };
 
 const DATE_CHART_METRICS = {
-  total: { label: "订单数", unit: "单", color: "#3e63dd", kind: "count" },
+  total: { label: "订单数", unit: "单", color: "#52525b", kind: "count" },
   sign_rate: { label: "签收率", unit: "%", color: "#2f9e6d", kind: "rate" },
   refund_rate: { label: "退款率", unit: "%", color: "#d64045", kind: "rate" },
   cancel_after_rate: { label: "发货后取消率", unit: "%", color: "#b36b00", kind: "rate" },
-  in_transit_rate: { label: "仍在途率", unit: "%", color: "#7c5cff", kind: "rate" },
+  in_transit_rate: { label: "仍在途率", unit: "%", color: "#71717a", kind: "rate" },
 };
 
 const INSIGHT_LABELS = {

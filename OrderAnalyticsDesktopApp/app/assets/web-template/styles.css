@@ -1,6 +1,6 @@
 /* ==========================================================================
    Order Analytics — data-cockpit UI
-   Design language: Linear / Vercel. Neutral zinc base, one restrained indigo
+   Design language: Linear / Vercel. Neutral zinc base, one restrained neutral
    accent, tabular numbers, crisp hairlines, dual light/dark theme.
 
    Theme mechanism: an inline <head> script sets html[data-theme="light|dark"]
@@ -37,13 +37,20 @@
     --text-2: #52525b;
     --text-3: #71717a;
 
-    /* accent (restrained indigo) */
-    --accent: #4f46e5;
-    --accent-hover: #4338ca;
-    --accent-text: #4f46e5;
-    --accent-soft: rgba(79, 70, 229, 0.10);
-    --accent-border: rgba(79, 70, 229, 0.28);
+    /* accent (low-saturation neutral) */
+    --accent: #52525b;
+    --accent-hover: #3f3f46;
+    --accent-text: #3f3f46;
+    --accent-soft: rgba(82, 82, 91, 0.10);
+    --accent-border: rgba(82, 82, 91, 0.28);
     --on-accent: #ffffff;
+
+    /* region chart accent */
+    --region-accent: #0d9488;
+    --region-accent-hover: #0f766e;
+    --region-accent-soft: rgba(13, 148, 136, 0.10);
+    --region-accent-border: rgba(13, 148, 136, 0.28);
+    --region-track: rgba(13, 148, 136, 0.12);
 
     /* semantic */
     --success: #17803d;
@@ -91,12 +98,18 @@
     --text-2: #a1a1aa;
     --text-3: #7c7c85;
 
-    --accent: #6366f1;
-    --accent-hover: #7276f4;
-    --accent-text: #a5b4fc;
-    --accent-soft: rgba(129, 140, 248, 0.15);
-    --accent-border: rgba(129, 140, 248, 0.34);
+    --accent: #a1a1aa;
+    --accent-hover: #d4d4d8;
+    --accent-text: #e4e4e7;
+    --accent-soft: rgba(161, 161, 170, 0.15);
+    --accent-border: rgba(161, 161, 170, 0.34);
     --on-accent: #ffffff;
+
+    --region-accent: #2dd4bf;
+    --region-accent-hover: #5eead4;
+    --region-accent-soft: rgba(45, 212, 191, 0.14);
+    --region-accent-border: rgba(45, 212, 191, 0.34);
+    --region-track: rgba(45, 212, 191, 0.16);
 
     --success: #4ac97e;
     --success-soft: rgba(74, 201, 126, 0.15);
@@ -952,8 +965,12 @@ select:hover {
 }
 
 .chart-bar:hover {
-    border-color: var(--accent-border);
-    background: var(--accent-soft);
+    border-color: var(--region-accent-border);
+    background: var(--region-accent-soft);
+}
+
+.chart-bar:hover .chart-track span {
+    background: var(--region-accent-hover);
 }
 
 .chart-label {
@@ -990,14 +1007,14 @@ select:hover {
     height: 6px;
     overflow: hidden;
     border-radius: var(--r-pill);
-    background: var(--surface-3);
+    background: var(--region-track);
 }
 
 .chart-track span {
     display: block;
     height: 100%;
     border-radius: inherit;
-    background: var(--accent);
+    background: var(--region-accent);
 }
 
 /* line chart shell (date view) */
