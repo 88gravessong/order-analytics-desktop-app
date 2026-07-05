@@ -1,6 +1,6 @@
 {
   "name": "order-analytics-client",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Order Analytics desktop client",
   "main": "main.js",
   "author": "88gravessong",
