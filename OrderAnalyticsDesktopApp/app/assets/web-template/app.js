@@ -684,7 +684,11 @@ function dateAnalysisTable(rows) {
   const body = rows.map((row, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td><strong>${escapeHTML(row.label || row.date || row.month || "")}</strong></td>
+      <td>
+        <button class="table-detail-link" type="button" data-action="date-detail" data-date-label="${escapeHTML(row.label || row.date || row.month || "")}" data-date-start="${escapeHTML(dateDetailRange(row).startDate || "")}" data-date-end="${escapeHTML(dateDetailRange(row).endDate || "")}">
+          ${escapeHTML(row.label || row.date || row.month || "")}
+        </button>
+      </td>
       <td>${row.total}</td>
       <td>${row.sku_count}</td>
       <td><span class="pill ${metricClass(row.sign_rate)}">${row.sign_rate}%</span></td>
@@ -697,6 +701,20 @@ function dateAnalysisTable(rows) {
     </tr>
   `).join("");
   return `<thead><tr>${headers.map((label) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
+}
+
+function dateDetailRange(row = {}) {
+  const start = row.start_date || row.date || row.month || row.label || "";
+  const end = row.end_date || row.date || row.month || row.label || start;
+  if (/^\d{4}-\d{2}$/.test(start)) {
+    const [year, month] = start.split("-").map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    return {
+      startDate: `${start}-01`,
+      endDate: `${start}-${String(lastDay).padStart(2, "0")}`,
+    };
+  }
+  return { startDate: start, endDate: end };
 }
 
 function chartRowsForView(rows) {
@@ -865,6 +883,18 @@ function destroyDateTrendChart() {
   dateTrendChart = null;
 }
 
+function chartThemeColors() {
+  const styles = getComputedStyle(document.documentElement);
+  const read = (name, fallback) => (styles.getPropertyValue(name) || fallback).trim();
+  return {
+    grid: read("--chart-grid", "rgba(9, 9, 11, 0.06)"),
+    tick: read("--chart-tick", "#a1a1aa"),
+    legend: read("--chart-legend", "#52525b"),
+    surface: read("--surface-1", "#ffffff"),
+    sans: read("--font-sans", "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"),
+  };
+}
+
 function getDateChartTooltip(shell) {
   let tooltip = shell.querySelector(".date-chart-tooltip");
   if (tooltip) return tooltip;
@@ -937,6 +967,7 @@ function mountDateTrendChart(rows = []) {
   }
 
   const activeMetrics = activeDateMetricKeys();
+  const theme = chartThemeColors();
   const scales = Object.fromEntries(activeMetrics.map((key, idx) => {
     const extent = dateMetricExtent(items, key);
     const isPrimary = idx === 0;
@@ -948,15 +979,15 @@ function mountDateTrendChart(rows = []) {
       max: extent.max,
       grid: {
         display: isPrimary,
-        color: "rgba(28, 32, 36, 0.06)",
+        color: theme.grid,
         drawBorder: false,
         drawOnChartArea: true,
         drawTicks: false,
       },
       ticks: {
         display: isPrimary,
-        color: "#90949c",
-        font: { size: 11, family: "'Segoe UI', 'Helvetica Neue', sans-serif" },
+        color: theme.tick,
+        font: { size: 11, family: theme.sans },
         maxTicksLimit: 6,
         padding: 8,
         callback(value) {
@@ -993,7 +1024,7 @@ function mountDateTrendChart(rows = []) {
       borderColor: metric.color,
       backgroundColor: hexToRgba(metric.color, isPrimary ? 0.08 : 0),
       pointBackgroundColor: metric.color,
-      pointBorderColor: "#fff",
+      pointBorderColor: theme.surface,
       pointBorderWidth: 1.5,
       pointRadius: 0,
       pointHoverRadius: 4,
@@ -1028,8 +1059,8 @@ function mountDateTrendChart(rows = []) {
             boxWidth: 10,
             boxHeight: 10,
             padding: 18,
-            color: "#60646c",
-            font: { family: "'Segoe UI', 'Helvetica Neue', sans-serif", size: 12 },
+            color: theme.legend,
+            font: { family: theme.sans, size: 12 },
           },
         },
         tooltip: {
@@ -1043,7 +1074,7 @@ function mountDateTrendChart(rows = []) {
         x: {
           grid: { display: false },
           ticks: {
-            color: "#90949c",
+            color: theme.tick,
             autoSkip: true,
             maxTicksLimit: 8,
             maxRotation: 0,
@@ -1083,6 +1114,8 @@ function insightTabs() {
 function rowMatchesFilters(row, filters = {}) {
   return Object.entries(filters).every(([key, value]) => {
     if (value === null || value === undefined || value === "") return true;
+    if (key === "date_start") return String(row.created_date || "") >= String(value);
+    if (key === "date_end") return String(row.created_date || "") <= String(value);
     return String(row[key] || "") === String(value);
   });
 }
@@ -1101,6 +1134,11 @@ function detailFilterLabel(filters = {}) {
   if (filters.region) labels.push(`地区: ${filters.region}`);
   if (filters.bucket) labels.push(`状态: ${bucketLabel(filters.bucket)}`);
   if (filters.created_date) labels.push(`日期: ${filters.created_date}`);
+  if (filters.date_start || filters.date_end) {
+    const start = filters.date_start || "最早";
+    const end = filters.date_end || "最晚";
+    labels.push(start === end ? `日期: ${start}` : `日期: ${start} ~ ${end}`);
+  }
   return labels.join(" / ") || "全部订单";
 }
 
@@ -1781,7 +1819,15 @@ function bindEvents() {
 
   document.getElementById("tableStage").addEventListener("click", (event) => {
     const detailButton = event.target.closest('[data-action="table-detail"]');
-    if (!detailButton) return;
+    const dateButton = event.target.closest('[data-action="date-detail"]');
+    if (!detailButton && !dateButton) return;
+    if (dateButton) {
+      const filters = {};
+      if (dateButton.dataset.dateStart) filters.date_start = dateButton.dataset.dateStart;
+      if (dateButton.dataset.dateEnd) filters.date_end = dateButton.dataset.dateEnd;
+      openDetailDrawer(filters, `${dateButton.dataset.dateLabel || "日期"} 订单明细`);
+      return;
+    }
     const filters = {};
     if (detailButton.dataset.sku) filters.seller_sku = detailButton.dataset.sku;
     if (detailButton.dataset.region) filters.region = detailButton.dataset.region;
@@ -1969,6 +2015,24 @@ async function loadInitialReport() {
   }
 }
 
+function setupThemeToggle() {
+  const toggle = document.getElementById("themeToggle");
+  if (!toggle) return;
+  toggle.addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem("oa-theme", next);
+    } catch (e) {
+      /* storage unavailable — theme still applies for the session */
+    }
+    if (state.view === "date" && !state.dateChartCollapsed && hasData()) {
+      mountDateTrendChart(currentRows());
+    }
+  });
+}
+
 bindEvents();
+setupThemeToggle();
 renderAll();
 loadInitialReport();
