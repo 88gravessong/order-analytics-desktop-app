@@ -5,7 +5,7 @@
 
    Theme mechanism: an inline <head> script sets html[data-theme="light|dark"]
    before paint (no flash). :root holds light tokens; [data-theme="dark"]
-   overrides. Manual toggle persists to localStorage; defaults to system.
+   overrides. Manual toggle persists to localStorage; defaults to light.
 
    Radius rule (Shape Consistency Lock): interactive controls + containers use
    6-12px; full-pill (--r-pill) is reserved for status badges, count pills and
