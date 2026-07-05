@@ -4,13 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>订单分析工具</title>
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#08080a" media="(prefers-color-scheme: dark)">
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
-    <link rel="stylesheet" href="./styles.css?v=20260704-chartjs-anim">
+    <script>
+        (function () {
+            try {
+                var stored = localStorage.getItem("oa-theme");
+                document.documentElement.dataset.theme = stored === "light" || stored === "dark" ? stored : "light";
+            } catch (e) {
+                document.documentElement.dataset.theme = "light";
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="./styles.css?v=20260705-cockpit">
 </head>
 <body>
     <div class="page-shell">
-        <div class="ambient ambient-one"></div>
-        <div class="ambient ambient-two"></div>
         <div class="page">
             <header class="hero">
                 <div class="hero-copy-wrap">
@@ -25,6 +35,10 @@
                         <a id="dailyDownload" class="button subtle disabled" href="./exports/daily_metrics.xlsx">日度 Excel</a>
                         <a id="structuredDownload" class="button subtle disabled" href="./exports/structured_orders.xlsx">结构化明细</a>
                     </div>
+                    <button id="themeToggle" class="theme-toggle" type="button" aria-label="切换深浅色主题" title="切换深浅色主题">
+                        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/></svg>
+                        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.3 8.3 0 0 1 9.8 3.5a8.3 8.3 0 1 0 10.7 10.7Z"/></svg>
+                    </button>
                 </div>
             </header>
 
@@ -180,6 +194,6 @@
 
     <script src="./generated/report-data.js"></script>
     <script src="./vendor/chart.umd.min.js?v=4.5.1"></script>
-    <script src="./app.js?v=20260704-chartjs-polish"></script>
+    <script src="./app.js?v=20260705-cockpit"></script>
 </body>
 </html>
